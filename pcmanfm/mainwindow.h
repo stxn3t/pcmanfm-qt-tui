@@ -70,7 +70,7 @@ public:
 
 private:
     QWidget* topBar_;
-    QPointer<QLabel> ttyLabel_;
+    QPointer<QWidget> ttyLabel_;
     TabBar* tabBar_;
     QStackedWidget* stackedWidget_;
 };

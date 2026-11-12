@@ -39,7 +39,8 @@
 - 🧭 **terminal cues.** `~/downloads $ ▌` as the path, `1:downloads` tmux-style tabs, a `>` cursor on the selected row, `:: devices` side pane headings, `:: ark` in the right-click menu, `[ 14 items · 1 selected ]` in the status bar
 - 🔘 **hollow buttons.** A text-only tool bar (`<` `>` `^` `r` `+` … `icons` `thumbs` `compact` `list` `menu`), outlined buttons that fill on hover
 - 🪶 **lightweight.** Qt 6 and GLib, no KDE Frameworks. Same footprint as PCManFM-Qt
-- ⚙️ **everything is a setting.** Fonts, borders, corners, labels and the 12-colour palette live in one `tty.conf`
+- 🪟 **see-through, if you like.** `opacity` lets your wallpaper show through the background (blurred by Hyprland); text, lines and icons stay solid
+- ⚙️ **everything is a setting.** Fonts, borders, corners, labels, opacity and the 12-colour palette live in one `tty.conf`
 
 <img src="preview/menu.png" width="800">
 
@@ -141,6 +142,8 @@ label_transform=lowercase
 
 list_icons=false
 
+opacity=1.0
+
 [colors]
 bg=#000000
 bg_alt=#111113
@@ -170,6 +173,7 @@ green=#a6e3a1
 | `label_weight` | `500` | Weight of the box labels. |
 | `label_transform` | `lowercase` | `lowercase` · `none`. Applies to labels, tabs and menu items. Paths, bookmarks and recent files keep their case. |
 | `list_icons` | `false` | File icons in the list views and side pane. The icon and thumbnail views always show them. |
+| `opacity` | `1.0` | Background opacity, `0.0`–`1.0`. Below `1.0` your wallpaper shows through the background, tinted by `bg`; text, lines and icons stay solid. `0.6`–`0.8` matches most see-through setups. |
 
 ### palette
 
@@ -187,6 +191,12 @@ green=#a6e3a1
 | `red` | Archives and disk images; the tab close button on hover. |
 | `yellow` | Images, video and audio. |
 | `green` | Executables. |
+
+### see-through background
+
+Set `opacity` under `[tty]`, for example `opacity=0.7`, and restart pcmanfm-tty. The main window, dialogs and menus get a see-through background tinted with `bg`. With Hyprland's blur on (`decoration → blur`), the wallpaper behind is blurred, the same as your other see-through apps. Completion lists and drop-down lists stay solid so they're readable over anything.
+
+If you already have a `tty.conf` from an older build, it won't have the `opacity` line yet: add it under `[tty]`.
 
 **Changing the accent** is the most common tweak: set `accent`, then put a lighter shade in `accent_alt`. Palettes from heroic-tty's flavors (catppuccin, tokyo night, gruvbox, nord, rosé pine, everforest, dracula) drop straight in.
 
@@ -245,7 +255,9 @@ The side pane mode switch moved from the top of the pane to **menu → view → 
 
 **Stylesheet with variables.** Qt stylesheets have no variables, so `tty.qss` uses `@name@` placeholders. At startup pcmanfm-tty reads `tty.conf`, fills them in and applies the result on top of the Fusion style. Fusion is used because a platform theme like Kvantum or Breeze would fight the stylesheet.
 
-**Floating labels.** Each box has `margin-top: 8px` and a 1px border, so the border line sits 8px below its top. A label with the background colour is placed over that line and hides the stretch behind it, the same trick as the `::before` labels in heroic-tty and jellyfin-tty. It follows the box when it moves or resizes and turns accent on hover. The side pane box's line is kept level with the file list's, below the tab bar.
+**Floating labels.** CSS themes like heroic-tty fake the label by painting a patch of background colour over the line. That patch would show up as a dark block on a see-through window, so pcmanfm-tty draws the box itself instead: a transparent overlay on each box draws the line 8px below its top, with a real gap where the label goes, and the label text in the gap. It follows the box when it moves or resizes, and the line and label light up on hover. The side pane box's line is kept level with the file list's, below the tab bar.
+
+**See-through.** With `opacity` below 1, the main window, dialogs and menus get a translucent surface, and pcmanfm-tty paints the `bg` tint at that opacity itself (Qt skips stylesheet backgrounds on translucent windows). Everything inside the window is transparent, so tints don't stack up; the compositor does the blur.
 
 **Colours and cursor.** libfm-qt's item delegate draws every row. In tty mode it picks the name colour from the file's type, adds `> ` to selected rows, dims the other columns, and leaves out list icons.
 
@@ -278,6 +290,7 @@ I built both forks against Qt 6.12 on Linux and ran pcmanfm-tty on a virtual X d
 
 **Not checked:**
 - Hyprland / Wayland itself. Qt draws the same widgets there, but window sizing and the app id were only checked under X.
+- The see-through look on a live compositor. The test display couldn't blend windows, so it was checked by capturing the window with its transparency and layering it over a wallpaper.
 - `makepkg` on a real Arch / CachyOS system with the repos' Qt and LXQt packages.
 - Real Ark, gvfs (trash, drives, network) and an icon theme. The test system had none, so the icon view showed no icons.
 - The copy progress bar itself: local copies finished too fast for the dialog to stay up.
@@ -305,8 +318,8 @@ Those places are provided by gvfs. Install `gvfs` (and `gvfs-smb` for Windows / 
 **Applications says `menu file "applications.menu" not found`.**
 Fixed in the tty branch: when your session's `XDG_MENU_PREFIX` points at a menu file that isn't installed, pcmanfm-tty falls back to LXQt's own menu from `lxqt-menu-data`. Pull and rebuild.
 
-**A label shows as a block over a line, or a line runs through it.**
-The box sits on something that isn't `bg`, usually after a `user.qss` rule gave a box a background. Remove the rule, or give it the same colour as `bg`.
+**`opacity` does nothing.**
+Check the line is under `[tty]` (not `[colors]`), then quit with `pcmanfm-tty --quit` and start it again: the setting is read at start-up. If the background is see-through but not blurred, turn on blur in Hyprland's `decoration` settings.
 
 **`makepkg` fails.**
 Send me the last 30 lines of the output.

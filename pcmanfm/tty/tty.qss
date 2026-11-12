@@ -12,11 +12,18 @@
     font-family: @font@;
     outline: 0;
 }
+/* only windows paint a background (see-through when opacity < 1);
+   everything inside is transparent so nothing stacks up */
 QWidget {
-    background: @bg@;
+    background: transparent;
     color: @fg@;
     selection-background-color: @accent@;
     selection-color: @bg@;
+}
+QMainWindow,
+QDialog,
+QMenu {
+    background: @bgWindow@;
 }
 QToolTip {
     background: @bg@;
@@ -28,24 +35,17 @@ QToolTip {
 
 /* ---------------------------------------------------------- boxes & labels */
 /* every pane that carries a floating label */
+/* the line and label are drawn by the box itself (with a gap for the
+   label); this only reserves the room for them */
 *[ttyBox="true"] {
-    border: @borderWidth@ @borderStyle@ @border@;
-    border-radius: @radius@;
+    border: @borderWidth@ solid transparent;
     margin-top: 8px;
     padding: 8px 4px 4px 4px;
-}
-*[ttyBox="true"]:hover {
-    border-color: @borderHover@;
-}
-QLabel#ttyLabel {
-    font-size: @labelSize@;
-    font-weight: @labelWeight@;
-    padding: 0px;
 }
 
 /* --------------------------------------------------------- tool bar & menus */
 QMenuBar {
-    background: @bg@;
+    background: transparent;
     color: @fgDim@;
     border-bottom: @borderWidth@ solid @border@;
 }
@@ -58,7 +58,7 @@ QMenuBar::item:pressed {
     color: @accent@;
 }
 QToolBar {
-    background: @bg@;
+    background: transparent;
     border: none;
     spacing: 6px;
     padding: 8px 8px 4px 8px;
@@ -99,7 +99,6 @@ QToolButton::menu-indicator {
 }
 
 QMenu {
-    background: @bg@;
     border: @borderWidth@ solid @borderHover@;
     border-radius: @radius@;
     padding: 4px;
@@ -111,7 +110,7 @@ QMenu::item {
     border-radius: @radius@;
 }
 QMenu::item:selected {
-    background: @bgAlt@;
+    background: @bgAltT@;
     color: @accent@;
 }
 QMenu::item:disabled {
@@ -143,7 +142,7 @@ QMenu::right-arrow {
 
 /* ------------------------------------------------------------------- tabs */
 QTabBar {
-    background: @bg@;
+    background: transparent;
     border: none;
     qproperty-drawBase: 0;
 }
@@ -174,8 +173,8 @@ QTabBar::close-button:hover {
 
 /* ------------------------------------------------------------- item views */
 QAbstractItemView {
-    background: @bg@;
-    alternate-background-color: @bg@;
+    background: transparent;
+    alternate-background-color: transparent;
     border: none;
     show-decoration-selected: 1;
     font-size: @fontSize@;
@@ -185,21 +184,21 @@ QAbstractItemView::item {
     border: none;
 }
 QAbstractItemView::item:hover {
-    background: @bgAlt@;
+    background: @bgAltT@;
 }
 QAbstractItemView::item:selected {
-    background: @bgAlt@;
+    background: @bgAltT@;
 }
 QListView[viewMode="1"]::item:selected,
 QListView::item:selected:active {
-    background: @bgAlt@;
+    background: @bgAltT@;
 }
 QHeaderView {
-    background: @bg@;
+    background: transparent;
     border: none;
 }
 QHeaderView::section {
-    background: @bg@;
+    background: transparent;
     color: @fgDim@;
     border: none;
     border-bottom: @borderWidth@ dashed @border@;
@@ -251,6 +250,7 @@ QComboBox::drop-down {
     width: 16px;
 }
 QComboBox QAbstractItemView {
+    background: @bg@;
     border: @borderWidth@ solid @borderHover@;
     selection-background-color: @bgAlt@;
     selection-color: @accent@;
@@ -365,7 +365,7 @@ QSplitter::handle:vertical {
     height: 12px;
 }
 QStatusBar {
-    background: @bg@;
+    background: transparent;
     color: @fgDim@;
     border-top: @borderWidth@ solid @border@;
     font-size: @labelSize@;
@@ -379,9 +379,6 @@ QStatusBar QLabel {
 }
 
 /* ---------------------------------------------------------------- dialogs */
-QDialog {
-    background: @bg@;
-}
 QGroupBox {
     border: @borderWidth@ @borderStyle@ @border@;
     border-radius: @radius@;
@@ -394,7 +391,7 @@ QGroupBox::title {
     left: 10px;
     padding: 0px 6px;
     color: @fgDim@;
-    background: @bg@;
+    background: transparent;
 }
 QGroupBox:hover {
     border-color: @borderHover@;

@@ -84,7 +84,7 @@ ViewFrame::ViewFrame(QWidget* parent):
 
     if(TtyTheme::enabled()) {
         stackedWidget_->setProperty("ttyBox", true);
-        ttyLabel_ = Fm::Tty::FloatingLabel::attach(stackedWidget_, QString(), this);
+        ttyLabel_ = Fm::Tty::FloatingLabel::attach(stackedWidget_, QString());
         connect(stackedWidget_, &QStackedWidget::currentChanged, this, &ViewFrame::updateBoxLabel);
     }
 }
@@ -154,6 +154,10 @@ MainWindow::MainWindow(Fm::FilePath path):
 
     Settings& settings = static_cast<Application*>(qApp)->settings();
     setAttribute(Qt::WA_DeleteOnClose);
+    if(TtyTheme::enabled() && Fm::Tty::opacity() < 1.0) {
+        // see-through background (tty.conf "opacity"); must be set before the window exists
+        setAttribute(Qt::WA_TranslucentBackground, true);
+    }
     // setup user interface
     ui.setupUi(this);
 
@@ -2589,7 +2593,7 @@ void MainWindow::ttySetupSidePane() {
         combo->hide();
     }
 
-    auto label = Fm::Tty::FloatingLabel::attach(box, QString(), box);
+    auto label = Fm::Tty::FloatingLabel::attach(box, QString());
     auto setTitle = [label](Fm::SidePane::Mode mode) {
         if(label) {
             label->setLabel(mode == Fm::SidePane::ModeDirTree ? QStringLiteral("tree") : QStringLiteral("places"));

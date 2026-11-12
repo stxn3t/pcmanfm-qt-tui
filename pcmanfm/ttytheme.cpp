@@ -21,8 +21,12 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QDialog>
+#include <QMainWindow>
 #include <QMessageBox>
 #include <QTimer>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QMouseEvent>
 #include <QSettings>
 #include <QStackedWidget>
@@ -62,6 +66,11 @@ label_transform=lowercase
 
 # file icons in list views and the side pane (the icon view always shows them)
 list_icons=false
+
+# background opacity, 0.0 - 1.0. Below 1 the background is see-through and
+# your wallpaper shows behind it (blurred, if Hyprland's blur is on);
+# text, lines and icons stay solid. Try 0.6 - 0.8.
+opacity=1.0
 
 [colors]
 # palette: true black (default flavor)
@@ -162,6 +171,7 @@ void TtyTheme::apply() {
     g_lowercase = s.value(QStringLiteral("label_transform"), QStringLiteral("lowercase")).toString()
                   == QLatin1String("lowercase");
     const bool listIcons = s.value(QStringLiteral("list_icons"), false).toBool();
+    const qreal opacity = qBound(0.0, s.value(QStringLiteral("opacity"), 1.0).toDouble(), 1.0);
     s.endGroup();
 
     Fm::Tty::Colors c;
@@ -183,6 +193,15 @@ void TtyTheme::apply() {
     Fm::Tty::setEnabled(true);
     Fm::Tty::setColors(c);
     Fm::Tty::setListIcons(listIcons);
+    Fm::Tty::setOpacity(opacity);
+    Fm::Tty::Metrics m;
+    m.borderWidth = qMax(1, pixels(borderWidth, 1));
+    m.borderStyle = borderStyle == QLatin1String("dashed") ? Qt::DashLine
+                    : borderStyle == QLatin1String("dotted") ? Qt::DotLine : Qt::SolidLine;
+    m.radius = qMax(0, pixels(radius, 3));
+    m.labelPixelSize = pixels(labelSize, 12);
+    m.labelWeight = labelWeight.toInt() > 0 ? labelWeight.toInt() : 500;
+    Fm::Tty::setMetrics(m);
 
     // A stylesheet sits best on top of Fusion; a platform theme (Kvantum,
     // Breeze) would fight it.
@@ -248,7 +267,15 @@ void TtyTheme::apply() {
     };
     const QString closeIcon = writeIcon(QStringLiteral("close.svg"), c.fgDim);
     const QString closeIconHover = writeIcon(QStringLiteral("close-hover.svg"), c.red);
+    auto rgba = [](const QColor& col) {
+        // Qt stylesheets take alpha as 0-255
+        return QStringLiteral("rgba(%1, %2, %3, %4)").arg(col.red()).arg(col.green()).arg(col.blue()).arg(col.alpha());
+    };
     const QList<QPair<const char*, QString>> vars = {
+        // see-through windows paint their tint themselves (see eventFilter):
+        // Qt skips stylesheet backgrounds on translucent windows
+        {"bgWindow", opacity < 1.0 ? QStringLiteral("transparent") : c.bg.name()},
+        {"bgAltT", rgba(Fm::Tty::translucent(c.bgAlt))},
         {"bgAlt", c.bgAlt.name()},
         {"bg", c.bg.name()},
         {"fgDim", c.fgDim.name()},
@@ -277,13 +304,39 @@ void TtyTheme::apply() {
     }
     qApp->setStyleSheet(qss);
 
-    // lowercases menus and boxes message boxes as they are shown
+    // lowercases menus, boxes message boxes, makes windows see-through
     qApp->installEventFilter(new TtyTheme(qApp));
 }
 
 // Lowercase menu items as they are shown (the tty "label_transform").
 // Menus listing user data (bookmarks, recent files, history) keep their case.
 bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
+    // see-through windows: dialogs and menus get a translucent surface before
+    // they are created; other pop-ups (completion lists, combo box lists)
+    // stay solid so they are readable over anything
+    if(event->type() == QEvent::Paint && watched->isWidgetType()
+       && watched->property("ttyWindow").toString() == QLatin1String("glass")) {
+        // the see-through tint behind everything in the window
+        QWidget* w = static_cast<QWidget*>(watched);
+        QPainter p(w);
+        p.setCompositionMode(QPainter::CompositionMode_Source);
+        p.fillRect(static_cast<QPaintEvent*>(event)->rect(), Fm::Tty::translucent(Fm::Tty::colors().bg));
+    }
+    if(Fm::Tty::opacity() < 1.0 && watched->isWidgetType()
+       && (event->type() == QEvent::Polish || event->type() == QEvent::Show)) {
+        QWidget* w = static_cast<QWidget*>(watched);
+        if(w->isWindow() && !w->property("ttyWindow").isValid()) {
+            const bool glass = qobject_cast<QDialog*>(w) || qobject_cast<QMenu*>(w) || qobject_cast<QMainWindow*>(w);
+            if(glass && (!w->testAttribute(Qt::WA_WState_Created) || w->testAttribute(Qt::WA_TranslucentBackground))) {
+                w->setProperty("ttyWindow", QStringLiteral("glass"));
+                w->setAttribute(Qt::WA_TranslucentBackground, true);
+            }
+            else if(!glass && event->type() == QEvent::Show && !w->inherits("QLabel")) {
+                w->setProperty("ttyWindow", QStringLiteral("solid"));
+                w->setStyleSheet(QStringLiteral("background: %1;").arg(Fm::Tty::colors().bg.name()));
+            }
+        }
+    }
     if(event->type() == QEvent::Show) {
         // message boxes ("Operation not supported"...): a box labelled by
         // severity instead of the stock icon, like the other dialogs
