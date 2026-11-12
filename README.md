@@ -228,6 +228,7 @@ The side pane mode switch moved from the top of the pane to **menu → view → 
 
 ### dialogs
 - copy / move / delete progress and the "file exists" dialog are boxed with their name on the border
+- message boxes are boxed and labelled `error`, `warning`, `info` or `question` instead of showing a stock icon
 - text-only hollow buttons; the default one is accent
 - flat 3px progress bars
 
@@ -298,8 +299,11 @@ JetBrains Mono isn't installed. Run `fc-list | grep -i jetbrains`; if it prints 
 **There's no `extract here` / `compress`.**
 Ark isn't installed, or another archiver is chosen. Install `ark`, then check **menu → edit → preferences → advanced → archiver integration**.
 
-**No trash, no drives in `:: devices`.**
-Install `gvfs` and log out and back in.
+**No trash, no drives in `:: devices`, or "Operation not supported" on Computer / Network.**
+Those places are provided by gvfs. Install `gvfs` (and `gvfs-smb` for Windows / Samba shares on the network), then fully quit pcmanfm-tty with `pcmanfm-tty --quit` and start it again. If you don't want them, right-click a place and hide it.
+
+**Applications says `menu file "applications.menu" not found`.**
+Fixed in the tty branch: when your session's `XDG_MENU_PREFIX` points at a menu file that isn't installed, pcmanfm-tty falls back to LXQt's own menu from `lxqt-menu-data`. Pull and rebuild.
 
 **A label shows as a block over a line, or a line runs through it.**
 The box sits on something that isn't `bg`, usually after a `user.qss` rule gave a box a background. Remove the rule, or give it the same colour as `bg`.

@@ -21,6 +21,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QMessageBox>
+#include <QTimer>
 #include <QMouseEvent>
 #include <QSettings>
 #include <QStackedWidget>
@@ -275,15 +277,39 @@ void TtyTheme::apply() {
     }
     qApp->setStyleSheet(qss);
 
-    if(g_lowercase) {
-        qApp->installEventFilter(new TtyTheme(qApp));
-    }
+    // lowercases menus and boxes message boxes as they are shown
+    qApp->installEventFilter(new TtyTheme(qApp));
 }
 
 // Lowercase menu items as they are shown (the tty "label_transform").
 // Menus listing user data (bookmarks, recent files, history) keep their case.
 bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
     if(event->type() == QEvent::Show) {
+        // message boxes ("Operation not supported"...): a box labelled by
+        // severity instead of the stock icon, like the other dialogs
+        if(QMessageBox* box = qobject_cast<QMessageBox*>(watched)) {
+            if(!box->property("ttyBoxed").toBool()) {
+                box->setProperty("ttyBoxed", true);
+                QString label;
+                switch(box->icon()) {
+                case QMessageBox::Critical: label = QStringLiteral("error"); break;
+                case QMessageBox::Warning: label = QStringLiteral("warning"); break;
+                case QMessageBox::Question: label = QStringLiteral("question"); break;
+                case QMessageBox::Information: label = QStringLiteral("info"); break;
+                default: label = box->windowTitle(); break;
+                }
+                if(QLabel* icon = box->findChild<QLabel*>(QStringLiteral("qt_msgboxex_icon_label"))) {
+                    icon->hide();
+                    icon->setFixedSize(0, 0);
+                }
+                Fm::Tty::boxDialog(box, label);
+                QTimer::singleShot(0, box, [box] { box->adjustSize(); });
+            }
+            return QObject::eventFilter(watched, event);
+        }
+        if(!g_lowercase) {
+            return QObject::eventFilter(watched, event);
+        }
         if(QMenu* menu = qobject_cast<QMenu*>(watched)) {
             const QString name = menu->objectName();
             if(name != QLatin1String("menuRecentFiles") && name != QLatin1String("menu_Bookmarks")

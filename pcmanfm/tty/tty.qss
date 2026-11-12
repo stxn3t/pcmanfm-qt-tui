@@ -281,17 +281,19 @@ QPushButton {
     padding: 5px 14px;
     min-height: 18px;
 }
-QPushButton:hover,
-QPushButton:focus {
+QPushButton:hover {
     background: @borderHover@;
     color: @bg@;
+}
+QPushButton:focus {
+    border-color: @accent@;
 }
 QPushButton:default {
     color: @accent@;
     border-color: @accent@;
 }
-QPushButton:default:hover,
-QPushButton:default:focus {
+/* hollow until hovered; keyboard focus only lights the border */
+QPushButton:default:hover {
     background: @accent@;
     color: @bg@;
 }
