@@ -19,6 +19,8 @@
 
 
 #include "tabbar.h"
+#include "ttytheme.h"
+#include <QRegularExpression>
 #include <QPointer>
 #include <QMouseEvent>
 #include <QApplication>
@@ -36,6 +38,7 @@ TabBar::TabBar(QWidget *parent):
     detachable_(true)
 {
     setElideMode(Qt::ElideRight); // works with minimumTabSizeHint()
+    connect(this, &QTabBar::tabMoved, this, &TabBar::ttyRenumber);
 }
 
 void TabBar::mousePressEvent(QMouseEvent *event) {
@@ -180,6 +183,28 @@ void TabBar::tabInserted(int index) {
     // touched after the insertion. Therefore, we need the following workaround.
     if(!autoHide() && index == 0 && count() == 1) {
         updateGeometry();
+    }
+    ttyRenumber();
+}
+
+
+void TabBar::tabRemoved(int index) {
+    QTabBar::tabRemoved(index);
+    ttyRenumber();
+}
+
+void TabBar::ttyRenumber() {
+    if(!TtyTheme::enabled()) {
+        return;
+    }
+    static const QRegularExpression numbered(QStringLiteral("^\\d+:"));
+    for(int i = 0; i < count(); ++i) {
+        QString text = tabText(i);
+        text.remove(numbered);
+        const QString wanted = QString::number(i + 1) + QLatin1Char(':') + text;
+        if(tabText(i) != wanted) {
+            setTabText(i, wanted);
+        }
     }
 }
 

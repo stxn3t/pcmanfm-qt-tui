@@ -1,0 +1,86 @@
+# Maintainer: stxn3t
+#
+# pcmanfm-tty: a tui-style file manager built on PCManFM-Qt.
+# Builds the tty forks of libfm-qt and pcmanfm-qt into /opt/pcmanfm-tty so
+# nothing clashes with a stock PCManFM-Qt / libfm-qt or with Dolphin.
+#
+#   makepkg -si
+
+pkgname=pcmanfm-tty-git
+pkgver=r0
+pkgrel=1
+pkgdesc="A minimalist, tui-style file manager built on PCManFM-Qt"
+arch=('x86_64')
+url="https://github.com/stxn3t/pcmanfm-qt-tui"
+license=('GPL-2.0-or-later' 'LGPL-2.1-or-later')
+depends=('qt6-base' 'glib2' 'libexif' 'libxcb' 'layer-shell-qt' 'lxqt-menu-data'
+         'desktop-file-utils' 'hicolor-icon-theme')
+makedepends=('git' 'cmake' 'ninja' 'qt6-tools')
+optdepends=('ark: extract here / extract to / compress from the right-click menu'
+            'gvfs: trash, removable drives and network locations'
+            'ttf-jetbrains-mono: the default font of the tty look'
+            'ffmpegthumbnailer: video thumbnails')
+provides=('pcmanfm-tty')
+conflicts=('pcmanfm-tty')
+source=("libfm-qt-tui::git+https://github.com/stxn3t/libfm-qt-tui.git#branch=tty"
+        "pcmanfm-qt-tui::git+https://github.com/stxn3t/pcmanfm-qt-tui.git#branch=tty"
+        "lxqt-build-tools::git+https://github.com/lxqt/lxqt-build-tools.git#tag=2.5.0"
+        "lxqt-menu-data::git+https://github.com/lxqt/lxqt-menu-data.git#tag=2.5.0")
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+_prefix=/opt/pcmanfm-tty
+
+pkgver() {
+    cd pcmanfm-qt-tui
+    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+    # LXQt 2.5's cmake helpers, staged only for the build (the repos may
+    # still ship 2.4). Nothing from this stage is packaged.
+    local stage="$srcdir/stage"
+    local common=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
+
+    cmake -S lxqt-build-tools -B build-bt "${common[@]}" -DCMAKE_INSTALL_PREFIX="$stage"
+    cmake --build build-bt
+    cmake --install build-bt
+
+    cmake -S lxqt-menu-data -B build-md "${common[@]}" -DCMAKE_INSTALL_PREFIX="$stage" \
+        -DCMAKE_PREFIX_PATH="$stage"
+    cmake --build build-md
+    cmake --install build-md
+
+    cmake -S libfm-qt-tui -B build-libfm "${common[@]}" \
+        -DCMAKE_INSTALL_PREFIX="$_prefix" \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DCMAKE_INSTALL_RPATH="$_prefix/lib" \
+        -DCMAKE_PREFIX_PATH="$stage" \
+        -DBUILD_DOCUMENTATION=OFF
+    cmake --build build-libfm
+    DESTDIR="$srcdir/libfm-dest" cmake --install build-libfm
+
+    cmake -S pcmanfm-qt-tui -B build-pcmanfm "${common[@]}" \
+        -DCMAKE_INSTALL_PREFIX="$_prefix" \
+        -DCMAKE_INSTALL_RPATH="$_prefix/lib" \
+        -DCMAKE_PREFIX_PATH="$stage;$srcdir/libfm-dest$_prefix"
+    cmake --build build-pcmanfm
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build-libfm
+    DESTDIR="$pkgdir" cmake --install build-pcmanfm
+
+    # the launcher and menu entry live in the normal places
+    install -d "$pkgdir/usr/bin"
+    ln -s "$_prefix/bin/pcmanfm-tty" "$pkgdir/usr/bin/pcmanfm-tty"
+    install -Dm644 "pcmanfm-qt-tui/pcmanfm/tty/pcmanfm-tty.desktop" \
+        "$pkgdir/usr/share/applications/pcmanfm-tty.desktop"
+
+    # stock PCManFM-Qt entries inside /opt would only confuse menus, and the
+    # LXQt desktop autostart file would clash with a stock pcmanfm-qt package
+    rm -f "$pkgdir$_prefix"/share/applications/pcmanfm-qt*.desktop
+    rm -rf "$pkgdir/etc"
+
+    # development files aren't needed at run time
+    rm -rf "$pkgdir$_prefix/include" "$pkgdir$_prefix/lib/pkgconfig" "$pkgdir$_prefix/share/cmake"
+}

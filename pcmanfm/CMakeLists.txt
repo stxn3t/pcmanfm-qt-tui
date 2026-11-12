@@ -16,6 +16,7 @@ set(pcmanfm_SRCS
     settings.cpp
     bulkrename.cpp
     desktopentrydialog.cpp
+    ttytheme.cpp
 )
 
 qt6_add_dbus_adaptor(pcmanfm_DBUS_SRCS
@@ -73,6 +74,7 @@ add_executable(pcmanfm-qt
     ${pcmanfm_UIS}
     ${QM_FILES}
     ${DESKTOP_FILES}
+    tty/tty.qrc
 )
 
 target_compile_definitions(pcmanfm-qt
@@ -94,7 +96,11 @@ target_link_libraries(pcmanfm-qt
     fm-qt6
 )
 
+# pcmanfm-tty: the binary is named pcmanfm-tty so it installs next to a stock PCManFM-Qt
+set_target_properties(pcmanfm-qt PROPERTIES OUTPUT_NAME pcmanfm-tty)
+
 install(TARGETS pcmanfm-qt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES tty/pcmanfm-tty.desktop DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
 
 # install a desktop entry file for pcmanfm-qt and desktop preferences
 install(FILES ${DESKTOP_FILES} DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"

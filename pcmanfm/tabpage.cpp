@@ -19,6 +19,7 @@
 
 
 #include "tabpage.h"
+#include "ttytheme.h"
 #include <libfm-qt6/filemenu.h>
 #include <libfm-qt6/mountoperation.h>
 #include <libfm-qt6/proxyfoldermodel.h>
@@ -586,7 +587,12 @@ void TabPage::onFolderError(const Fm::GErrorPtr& err, Fm::Job::ErrorSeverity sev
 void TabPage::onFolderFsInfo() {
     guint64 free, total;
     QString& msg = statusText_[StatusTextFSInfo];
-    if(folder_->getFilesystemInfo(&total, &free)) {
+    if(folder_->getFilesystemInfo(&total, &free) && TtyTheme::enabled()) {
+        msg = tr("%1 free / %2")
+              .arg(formatFileSize(free, fm_config->si_unit),
+                   formatFileSize(total, fm_config->si_unit));
+    }
+    else if(folder_->getFilesystemInfo(&total, &free)) {
         msg = tr("Free space: %1 (Total: %2)")
               .arg(formatFileSize(free, fm_config->si_unit),
                    formatFileSize(total, fm_config->si_unit));
@@ -623,6 +629,17 @@ QString TabPage::formatStatusText() {
         if (fi && fi->isSymlink()) {
             text += QStringLiteral(" (%1)")
                     .arg(tr("Link to") + QChar(QChar::Space) + QString::fromStdString(fi->target()));
+        }
+        if(TtyTheme::enabled()) {
+            // "[ 14 items · 3 hidden ]"
+            text = tr("%n item(s)", "", shown_files).replace(QStringLiteral("(s)"), shown_files == 1 ? QString() : QStringLiteral("s"));
+            if(folder_->path().hasUriScheme("search")) {
+                text += QStringLiteral(" ") + tr("found");
+            }
+            if(hidden_files > 0) {
+                text += QStringLiteral(" · ") + tr("%n hidden", "", hidden_files);
+            }
+            return QStringLiteral("[ %1 ]").arg(text);
         }
         return text;
     }
@@ -881,6 +898,21 @@ void TabPage::onSelChanged() {
             }
             /* FIXME: can we show some more info on selection?
                 that isn't lightweight if a lot of files are selected */
+        }
+    }
+    if(TtyTheme::enabled() && !msg.isEmpty()) {
+        // "[ 14 items · 1 selected · "proton.tar.gz" (480.6 MiB) gzip archive ]"
+        QString items = formatStatusText();
+        if(items.startsWith(QStringLiteral("[ ")) && items.endsWith(QStringLiteral(" ]"))) {
+            items = items.mid(2, items.length() - 4);
+        }
+        const int numSel = folderView_->selectedFiles().size();
+        msg.replace(QStringLiteral("item(s)"), QStringLiteral("items"));
+        if(numSel == 1) {
+            msg = QStringLiteral("[ %1 · 1 selected · %2 ]").arg(items, msg);
+        }
+        else {
+            msg = QStringLiteral("[ %1 · %2 ]").arg(items, msg);
         }
     }
     statusText_[StatusTextSelectedFiles] = msg;

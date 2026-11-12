@@ -170,7 +170,7 @@ QString Settings::xdgUserConfigDir() {
 QString Settings::profileDir(QString profile, bool useFallback) {
     // try user-specific config file first
     QString dirName = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
-                      + QStringLiteral("/pcmanfm-qt/") + profile;
+                      + QStringLiteral("/pcmanfm-tty/") + profile;
     QDir dir(dirName);
 
     // if user config dir does not exist, try system-wide config dirs instead
@@ -178,7 +178,7 @@ QString Settings::profileDir(QString profile, bool useFallback) {
         QString fallbackDir;
         const QStringList confList = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation);
         for(const auto &thisConf : confList) {
-            fallbackDir = thisConf + QStringLiteral("/pcmanfm-qt/") + profile;
+            fallbackDir = thisConf + QStringLiteral("/pcmanfm-tty/") + profile;
             if(fallbackDir == dirName) {
                 continue;
             }
@@ -218,7 +218,7 @@ bool Settings::loadFile(QString filePath) {
     }
     suCommand_ = settings.value(QStringLiteral("SuCommand"), QStringLiteral("lxqt-sudo %s")).toString();
     setTerminal(settings.value(QStringLiteral("Terminal"), QStringLiteral("xterm")).toString());
-    setArchiver(settings.value(QStringLiteral("Archiver"), QStringLiteral("file-roller")).toString());
+    setArchiver(settings.value(QStringLiteral("Archiver"), QStringLiteral("ark")).toString());
     setSiUnit(settings.value(QStringLiteral("SIUnit"), false).toBool());
 
     setOnlyUserTemplates(settings.value(QStringLiteral("OnlyUserTemplates"), false).toBool());
@@ -312,7 +312,7 @@ bool Settings::loadFile(QString filePath) {
     settings.endGroup();
 
     settings.beginGroup(QStringLiteral("FolderView"));
-    viewMode_ = viewModeFromString(settings.value(QStringLiteral("Mode"), Fm::FolderView::IconMode).toString());
+    viewMode_ = viewModeFromString(settings.value(QStringLiteral("Mode"), QStringLiteral("detailed")).toString());
     showHidden_ = settings.value(QStringLiteral("ShowHidden"), false).toBool();
     sortOrder_ = sortOrderFromString(settings.value(QStringLiteral("SortOrder")).toString());
     sortColumn_ = sortColumnFromString(settings.value(QStringLiteral("SortColumn")).toString());
@@ -363,7 +363,7 @@ bool Settings::loadFile(QString filePath) {
     splitterPos_ = settings.value(QStringLiteral("SplitterPos"), 150).toInt();
     sidePaneVisible_ = settings.value(QStringLiteral("SidePaneVisible"), true).toBool();
     sidePaneMode_ = sidePaneModeFromString(settings.value(QStringLiteral("SidePaneMode")).toString());
-    showMenuBar_ = settings.value(QStringLiteral("ShowMenuBar"), true).toBool();
+    showMenuBar_ = settings.value(QStringLiteral("ShowMenuBar"), false).toBool();
     splitView_ = settings.value(QStringLiteral("SplitView"), false).toBool();
     pathBarButtons_ = settings.value(QStringLiteral("PathBarButtons"), true).toBool();
     settings.endGroup();

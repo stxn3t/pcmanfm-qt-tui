@@ -46,6 +46,9 @@ public:
     // a tab is dropped into one of our windows:
     static const char* tabDropped;
 
+    // tty look: prefix every tab with its number, tmux style ("1:downloads").
+    void ttyRenumber();
+
 Q_SIGNALS:
     void tabDetached();
 
@@ -57,6 +60,7 @@ protected:
     QSize tabSizeHint (int index) const override;
     QSize minimumTabSizeHint (int index) const override;
     void tabInserted(int index) override;
+    void tabRemoved(int index) override;
 
 private:
     QPoint dragStartPosition_;

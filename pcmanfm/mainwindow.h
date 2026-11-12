@@ -22,6 +22,7 @@
 
 #include "ui_main-win.h"
 #include <QPointer>
+#include <QLabel>
 #include <QMainWindow>
 #include <QListView>
 #include <QSortFilterProxyModel>
@@ -64,8 +65,12 @@ public:
         return stackedWidget_;
     }
 
+    // tty look: put the current folder's name on the box's border line
+    void updateBoxLabel();
+
 private:
     QWidget* topBar_;
+    QPointer<QLabel> ttyLabel_;
     TabBar* tabBar_;
     QStackedWidget* stackedWidget_;
 };
@@ -271,6 +276,9 @@ private:
     Ui::MainWindow ui;
     Fm::PathEdit* pathEntry_;
     Fm::PathBar* pathBar_;
+    QPointer<QWidget> ttyPrompt_; // TtyPathPrompt wrapping pathEntry_ in the tty look
+    void ttySetupToolBar();
+    void ttySetupSidePane();
     QLabel* fsInfoLabel_;
     QLabel* searchingLabel_;
     QProgressBar* searchBusyIndicator_;

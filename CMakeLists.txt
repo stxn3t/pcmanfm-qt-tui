@@ -37,6 +37,7 @@ include(LXQtTranslateDesktop)
 include(LXQtCompilerSettings NO_POLICY_SCOPE)
 
 set(CMAKE_AUTOMOC TRUE)
+set(CMAKE_AUTORCC TRUE)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 

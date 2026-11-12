@@ -18,6 +18,9 @@
 */
 
 #include "mainwindow.h"
+#include "ttytheme.h"
+#include <libfm-qt6/tty.h>
+#include <QComboBox>
 
 #include <QLabel>
 #include <QMenu>
@@ -78,6 +81,23 @@ ViewFrame::ViewFrame(QWidget* parent):
     tabBar_->setChangeCurrentOnDrag(true);
     tabBar_->setAcceptDrops(true);
     tabBar_->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    if(TtyTheme::enabled()) {
+        stackedWidget_->setProperty("ttyBox", true);
+        ttyLabel_ = Fm::Tty::FloatingLabel::attach(stackedWidget_, QString(), this);
+        connect(stackedWidget_, &QStackedWidget::currentChanged, this, &ViewFrame::updateBoxLabel);
+    }
+}
+
+void ViewFrame::updateBoxLabel() {
+    if(!ttyLabel_) {
+        return;
+    }
+    if(TabPage* page = qobject_cast<TabPage*>(stackedWidget_->currentWidget())) {
+        QString title = page->title();
+        title.replace(QLatin1Char('\n'), QLatin1Char(' '));
+        static_cast<Fm::Tty::FloatingLabel*>(ttyLabel_.data())->setLabel(TtyTheme::labelText(title));
+    }
 }
 
 void ViewFrame::createTopBar(bool usePathButtons) {
@@ -164,6 +184,10 @@ MainWindow::MainWindow(Fm::FilePath path):
     backButton->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(backButton, &QToolButton::customContextMenuRequested, this, &MainWindow::onBackForwardContextMenu);
 
+    if(TtyTheme::enabled()) {
+        ttySetupToolBar();
+    }
+
     connect(ui.actionCloseRight, &QAction::triggered, this, &MainWindow::closeRightTabs);
     connect(ui.actionCloseLeft, &QAction::triggered, this, &MainWindow::closeLeftTabs);
     connect(ui.actionCloseOther, &QAction::triggered, this, &MainWindow::closeOtherTabs);
@@ -191,6 +215,9 @@ MainWindow::MainWindow(Fm::FilePath path):
     connect(ui.sidePane, &Fm::SidePane::createNewFolderRequested, this, &MainWindow::onSidePaneCreateNewFolderRequested);
     connect(ui.sidePane, &Fm::SidePane::modeChanged, this, &MainWindow::onSidePaneModeChanged);
     connect(ui.sidePane, &Fm::SidePane::hiddenPlaceSet, this, &MainWindow::onSettingHiddenPlace);
+    if(TtyTheme::enabled()) {
+        ttySetupSidePane();
+    }
 
     // detect change of splitter position
     connect(ui.splitter, &QSplitter::splitterMoved, this, &MainWindow::onSplitterMoved);
@@ -395,6 +422,13 @@ MainWindow::MainWindow(Fm::FilePath path):
     }
     createPathBar(settings.pathBarButtons());
 
+    // tty look: keep the side pane box's border line level with the folder box
+    if(TtyTheme::enabled() && activeViewFrame_) {
+        if(QFrame* box = findChild<QFrame*>(QStringLiteral("ttySideBox"))) {
+            new TtyAlign(box, activeViewFrame_->getStackedWidget());
+        }
+    }
+
     if(settings.pathBarButtons()) {
         ui.actionPathButtons->setChecked(true);
     }
@@ -562,6 +596,7 @@ void MainWindow::on_actionSplitView_triggered(bool checked) {
             delete pathEntry_;
             pathEntry_ = nullptr;
         }
+        delete ttyPrompt_;
 
         // add a spacer before the menu action if not existing
         if(menuSpacer_ == nullptr) {
@@ -648,6 +683,9 @@ void MainWindow::chdir(Fm::FilePath path, ViewFrame* viewFrame) {
 }
 
 void MainWindow::createPathBar(bool usePathButtons) {
+    if(TtyTheme::enabled() && !splitView_) {
+        usePathButtons = false; // the tty prompt wraps the path entry
+    }
     // NOTE: Path bars/entries may be created after tab pages; so, their paths/texts should be set.
     if(splitView_) {
         for(int i = 0; i < ui.viewSplitter->count(); ++i) {
@@ -700,11 +738,15 @@ void MainWindow::createPathBar(bool usePathButtons) {
                 if(curPage) {
                     pathEntry_->setText(curPage->pathName());
                 }
+                if(TtyTheme::enabled()) {
+                    delete ttyPrompt_;
+                    bar = ttyPrompt_ = new TtyPathPrompt(pathEntry_, this);
+                }
             }
         }
         if(bar != nullptr) {
             ui.toolBar->insertWidget(ui.actionGo, bar);
-            ui.actionGo->setVisible(!usePathButtons);
+            ui.actionGo->setVisible(!usePathButtons && !TtyTheme::enabled());
         }
     }
 }
@@ -1698,7 +1740,11 @@ void MainWindow::onTabPageTitleChanged() {
             // remove newline and distinguish ampersand from mnemonic
             tabText.replace(QLatin1Char('\n'), QLatin1Char(' '))
                    .replace(QLatin1Char('&'), QLatin1String("&&"));
-            viewFrame->getTabBar()->setTabText(index, tabText);
+            viewFrame->getTabBar()->setTabText(index, TtyTheme::labelText(tabText));
+            viewFrame->getTabBar()->ttyRenumber();
+            if(index == viewFrame->getStackedWidget()->currentIndex()) {
+                viewFrame->updateBoxLabel();
+            }
         }
 
         if(viewFrame == activeViewFrame_) {
@@ -2115,7 +2161,10 @@ void MainWindow::focusPathEntry() {
         }
     }
     else {
-        if(pathEntry_ != nullptr) {
+        if(auto prompt = qobject_cast<TtyPathPrompt*>(ttyPrompt_.data())) {
+            prompt->startEditing();
+        }
+        else if(pathEntry_ != nullptr) {
             pathEntry_->setFocus();
             pathEntry_->selectAll();
         }
@@ -2468,6 +2517,104 @@ void MainWindow::openFolderAndSelectFiles(const Fm::FilePathList& files, bool in
             }
         }
     }
+}
+
+
+// tty look: a text-only tool bar ("<  >  ^  r  +  ~/path $  icons thumbs compact list").
+// The original actions stay in the menus untouched; the tool bar gets short
+// proxies that forward to them and mirror their state.
+void MainWindow::ttySetupToolBar() {
+    QToolBar* bar = ui.toolBar;
+    bar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+
+    auto proxy = [this, bar](QAction* orig, const QString& text) {
+        QAction* p = new QAction(text, this);
+        p->setProperty("ttyKeepCase", true);
+        p->setToolTip(orig->toolTip().isEmpty() ? orig->text().remove(QLatin1Char('&')) : orig->toolTip());
+        p->setCheckable(orig->isCheckable());
+        auto sync = [p, orig] {
+            p->setEnabled(orig->isEnabled());
+            p->setChecked(orig->isChecked());
+            p->setVisible(orig->isVisible());
+        };
+        sync();
+        connect(orig, &QAction::changed, p, sync);
+        connect(p, &QAction::triggered, orig, [orig, sync] {
+            orig->trigger();
+            sync();
+        });
+        bar->addAction(p);
+        return p;
+    };
+
+    bar->clear();
+    QAction* back = proxy(ui.actionGoBack, QStringLiteral("<"));
+    QAction* forward = proxy(ui.actionGoForward, QStringLiteral(">"));
+    proxy(ui.actionGoUp, QStringLiteral("^"));
+    proxy(ui.actionReload, QStringLiteral("r"));
+    proxy(ui.actionNewTab, QStringLiteral("+"));
+    bar->addSeparator();
+    bar->addAction(ui.actionGo); // anchor: the path prompt is inserted before it
+    bar->addSeparator();
+    proxy(ui.actionIconView, QStringLiteral("icons"));
+    proxy(ui.actionThumbnailView, QStringLiteral("thumbs"));
+    proxy(ui.actionCompactView, QStringLiteral("compact"));
+    proxy(ui.actionDetailedList, QStringLiteral("list"));
+    bar->addAction(ui.actionMenu);
+    ui.actionMenu->setIconText(QStringLiteral("menu"));
+
+    // browse history on right click, as with the original buttons
+    for(QAction* a : {back, forward}) {
+        if(QToolButton* btn = qobject_cast<QToolButton*>(bar->widgetForAction(a))) {
+            btn->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(btn, &QToolButton::customContextMenuRequested, this, &MainWindow::onBackForwardContextMenu);
+        }
+    }
+}
+
+// tty look: the side pane sits in a box labelled "places" (or "tree").
+// The mode combo box is replaced by two View menu items.
+void MainWindow::ttySetupSidePane() {
+    QFrame* box = new QFrame;
+    box->setObjectName(QStringLiteral("ttySideBox"));
+    box->setProperty("ttyBox", true);
+    auto layout = new QVBoxLayout(box);
+    layout->setContentsMargins(0, 0, 0, 0);
+    ui.splitter->replaceWidget(0, box);
+    layout->addWidget(ui.sidePane);
+    box->setVisible(ui.sidePane->isVisibleTo(this) || static_cast<Application*>(qApp)->settings().isSidePaneVisible());
+    ui.sidePane->setVisible(box->isVisibleTo(this));
+
+    if(QComboBox* combo = ui.sidePane->findChild<QComboBox*>()) {
+        combo->hide();
+    }
+
+    auto label = Fm::Tty::FloatingLabel::attach(box, QString(), box);
+    auto setTitle = [label](Fm::SidePane::Mode mode) {
+        if(label) {
+            label->setLabel(mode == Fm::SidePane::ModeDirTree ? QStringLiteral("tree") : QStringLiteral("places"));
+        }
+    };
+    setTitle(ui.sidePane->mode());
+    connect(ui.sidePane, &Fm::SidePane::modeChanged, this, setTitle);
+    connect(ui.actionSidePane, &QAction::toggled, box, [this, box](bool on) {
+        box->setVisible(on);
+        ui.sidePane->setVisible(on);
+    });
+
+    // side pane mode, formerly the combo box at the top of the pane
+    QActionGroup* group = new QActionGroup(this);
+    QAction* places = new QAction(tr("Side Pane: Places"), group);
+    QAction* tree = new QAction(tr("Side Pane: Directory Tree"), group);
+    places->setCheckable(true);
+    tree->setCheckable(true);
+    (ui.sidePane->mode() == Fm::SidePane::ModeDirTree ? tree : places)->setChecked(true);
+    connect(places, &QAction::triggered, this, [this] { ui.sidePane->setMode(Fm::SidePane::ModePlaces); });
+    connect(tree, &QAction::triggered, this, [this] { ui.sidePane->setMode(Fm::SidePane::ModeDirTree); });
+    connect(ui.sidePane, &Fm::SidePane::modeChanged, this, [places, tree](Fm::SidePane::Mode mode) {
+        (mode == Fm::SidePane::ModeDirTree ? tree : places)->setChecked(true);
+    });
+    ui.menu_View->insertActions(ui.actionSidePane, {places, tree});
 }
 
 }

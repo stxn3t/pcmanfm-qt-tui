@@ -19,6 +19,7 @@
 
 
 #include "application.h"
+#include "ttytheme.h"
 #include "mainwindow.h"
 #include "desktopwindow.h"
 #include <QDBusConnection>
@@ -63,7 +64,8 @@
 
 namespace PCManFM {
 
-static const char* serviceName = "org.pcmanfm.PCManFM";
+// pcmanfm-tty: its own bus name, so it runs alongside a stock PCManFM-Qt
+static const char* serviceName = "org.pcmanfm.PCManFMTty";
 static const char* ifaceName = "org.pcmanfm.Application";
 
 int ProxyStyle::styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget, QStyleHintReturn* returnData) const {
@@ -97,7 +99,7 @@ Application::Application(int& argc, char** argv):
     argv_ = argv;
 
     setApplicationVersion(QStringLiteral(PCMANFM_QT_VERSION));
-    setDesktopFileName(QStringLiteral("pcmanfm-qt"));
+    setDesktopFileName(QStringLiteral("pcmanfm-tty")); // Wayland app id / Hyprland class
     setWindowIcon(QIcon::fromTheme(QStringLiteral("pcmanfm-qt")));
 
     underWayland_ = QGuiApplication::platformName() == QStringLiteral("wayland");
@@ -107,6 +109,7 @@ Application::Application(int& argc, char** argv):
     if(dbus.registerService(QLatin1String(serviceName))) {
         // we successfully registered the service
         isPrimaryInstance = true;
+        TtyTheme::apply(); // sets Fusion + the tty stylesheet when enabled
         setStyle(new ProxyStyle());
         //desktop()->installEventFilter(this);
 
