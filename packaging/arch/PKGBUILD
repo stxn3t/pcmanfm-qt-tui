@@ -13,7 +13,7 @@ pkgdesc="A minimalist, tui-style file manager built on PCManFM-Qt"
 arch=('x86_64')
 url="https://github.com/stxn3t/pcmanfm-qt-tui"
 license=('GPL-2.0-or-later' 'LGPL-2.1-or-later')
-depends=('qt6-base' 'glib2' 'libexif' 'libxcb' 'layer-shell-qt' 'lxqt-menu-data'
+depends=('qt6-base' 'glib2' 'libexif' 'libxcb' 'layer-shell-qt' 'lxqt-menu-data>=2.5.0'
          'desktop-file-utils' 'hicolor-icon-theme')
 makedepends=('git' 'cmake' 'ninja' 'qt6-tools')
 optdepends=('ark: extract here / extract to / compress from the right-click menu'
@@ -24,9 +24,8 @@ provides=('pcmanfm-tty')
 conflicts=('pcmanfm-tty')
 source=("libfm-qt-tui::git+https://github.com/stxn3t/libfm-qt-tui.git#branch=tty"
         "pcmanfm-qt-tui::git+https://github.com/stxn3t/pcmanfm-qt-tui.git#branch=tty"
-        "lxqt-build-tools::git+https://github.com/lxqt/lxqt-build-tools.git#tag=2.5.0"
-        "lxqt-menu-data::git+https://github.com/lxqt/lxqt-menu-data.git#tag=2.5.0")
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+        "lxqt-build-tools::git+https://github.com/lxqt/lxqt-build-tools.git#tag=2.5.0")
+sha256sums=('SKIP' 'SKIP' 'SKIP')
 
 _prefix=/opt/pcmanfm-tty
 
@@ -38,17 +37,14 @@ pkgver() {
 build() {
     # LXQt 2.5's cmake helpers, staged only for the build (the repos may
     # still ship 2.4). Nothing from this stage is packaged.
+    # lxqt-menu-data comes from the repos (depends): building it here would
+    # try to write its menu file straight into /etc.
     local stage="$srcdir/stage"
     local common=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
 
     cmake -S lxqt-build-tools -B build-bt "${common[@]}" -DCMAKE_INSTALL_PREFIX="$stage"
     cmake --build build-bt
     cmake --install build-bt
-
-    cmake -S lxqt-menu-data -B build-md "${common[@]}" -DCMAKE_INSTALL_PREFIX="$stage" \
-        -DCMAKE_PREFIX_PATH="$stage"
-    cmake --build build-md
-    cmake --install build-md
 
     cmake -S libfm-qt-tui -B build-libfm "${common[@]}" \
         -DCMAKE_INSTALL_PREFIX="$_prefix" \
