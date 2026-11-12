@@ -136,8 +136,9 @@ QMenu::indicator:checked {
     border-color: @accent@;
 }
 QMenu::right-arrow {
-    width: 8px;
-    height: 8px;
+    image: url(@arrowRight@);
+    width: 10px;
+    height: 10px;
 }
 
 /* ------------------------------------------------------------------- tabs */
@@ -193,6 +194,11 @@ QListView[viewMode="1"]::item:selected,
 QListView::item:selected:active {
     background: @bgAltT@;
 }
+/* plain lists in dialogs (preferences pages, app chooser): accent text when
+   selected. File views colour their own rows, so this stays scoped. */
+QDialog QAbstractItemView::item:selected {
+    color: @accent@;
+}
 QHeaderView {
     background: transparent;
     border: none;
@@ -245,9 +251,48 @@ QSpinBox:focus,
 QComboBox:focus {
     border-color: @accent@;
 }
+QComboBox {
+    padding-right: 22px;
+}
 QComboBox::drop-down {
     border: none;
+    width: 20px;
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+}
+QComboBox::down-arrow {
+    image: url(@arrowDown@);
+    width: 10px;
+    height: 10px;
+}
+QComboBox::down-arrow:hover,
+QComboBox::down-arrow:on {
+    image: url(@arrowDownHover@);
+}
+QSpinBox {
+    padding-right: 18px;
+}
+QSpinBox::up-button,
+QSpinBox::down-button {
+    border: none;
     width: 16px;
+    subcontrol-origin: padding;
+}
+QSpinBox::up-button {
+    subcontrol-position: top right;
+}
+QSpinBox::down-button {
+    subcontrol-position: bottom right;
+}
+QSpinBox::up-arrow {
+    image: url(@arrowUp@);
+    width: 9px;
+    height: 9px;
+}
+QSpinBox::down-arrow {
+    image: url(@arrowDown@);
+    width: 9px;
+    height: 9px;
 }
 QComboBox QAbstractItemView {
     background: @bg@;

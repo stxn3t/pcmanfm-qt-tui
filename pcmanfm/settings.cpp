@@ -34,6 +34,22 @@
 
 namespace PCManFM {
 
+// the terminal to use when none is configured or the configured one is missing
+static QString detectTerminal(const QString& fallback) {
+    const QString env = qEnvironmentVariable("TERMINAL").section(QLatin1Char(' '), 0, 0);
+    if(!env.isEmpty() && !QStandardPaths::findExecutable(env).isEmpty()) {
+        return env;
+    }
+    const char* const known[] = {"kitty", "ghostty", "alacritty", "foot", "wezterm", "konsole",
+                                 "gnome-terminal", "xfce4-terminal", "qterminal", "lxterminal", "xterm"};
+    for(const char* t : known) {
+        if(!QStandardPaths::findExecutable(QLatin1String(t)).isEmpty()) {
+            return QLatin1String(t);
+        }
+    }
+    return fallback.isEmpty() ? QStringLiteral("xterm") : fallback;
+}
+
 inline static const char* bookmarkOpenMethodToString(OpenDirTargetType value);
 inline static OpenDirTargetType bookmarkOpenMethodFromString(const QString str);
 
@@ -217,7 +233,13 @@ bool Settings::loadFile(QString filePath) {
         fallbackIconThemeName_ = QLatin1String("oxygen"); // fallback icon theme name
     }
     suCommand_ = settings.value(QStringLiteral("SuCommand"), QStringLiteral("lxqt-sudo %s")).toString();
-    setTerminal(settings.value(QStringLiteral("Terminal"), QStringLiteral("xterm")).toString());
+    // pcmanfm-tty: use the configured terminal if it is installed, otherwise
+    // $TERMINAL or the first common terminal found (not a missing xterm)
+    QString terminal = settings.value(QStringLiteral("Terminal")).toString();
+    if(terminal.isEmpty() || QStandardPaths::findExecutable(terminal.section(QLatin1Char(' '), 0, 0)).isEmpty()) {
+        terminal = detectTerminal(terminal);
+    }
+    setTerminal(terminal);
     setArchiver(settings.value(QStringLiteral("Archiver"), QStringLiteral("ark")).toString());
     setSiUnit(settings.value(QStringLiteral("SIUnit"), false).toBool());
 

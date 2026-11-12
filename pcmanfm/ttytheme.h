@@ -14,7 +14,9 @@
 #include <QString>
 #include <QWidget>
 
+class QDialog;
 class QLabel;
+class QMessageBox;
 class QStackedWidget;
 
 namespace Fm {
@@ -45,6 +47,8 @@ protected:
 
 private:
     explicit TtyTheme(QObject* parent);
+    static void decorateMessageBox(QMessageBox* box);
+    static void decorateDialog(QDialog* dialog);
 };
 
 // Keeps a box's top border line level with another widget's: used so the

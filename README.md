@@ -206,6 +206,8 @@ Put extra Qt stylesheet rules in `~/.config/pcmanfm-tty/user.qss`. It is loaded 
 
 ### pcmanfm's own settings
 
+**Terminal.** "Open in terminal" (F4) uses the terminal set in preferences. If none is set, or the one set isn't installed, pcmanfm-tty uses `$TERMINAL`, or else the first it finds of kitty, ghostty, alacritty, foot, wezterm, konsole, gnome-terminal, xfce4-terminal, qterminal, lxterminal and xterm.
+
 Everything else (single click, thumbnails, terminal, hidden files, sorting) is in **menu → edit → preferences**, as in PCManFM-Qt. They are saved in `~/.config/pcmanfm-tty/default/settings.conf`, separate from a stock PCManFM-Qt's.
 
 The side pane mode switch moved from the top of the pane to **menu → view → side pane: places / directory tree**.
@@ -237,8 +239,17 @@ The side pane mode switch moved from the top of the pane to **menu → view → 
 - `:: ark` heading over the archive actions
 
 ### dialogs
-- copy / move / delete progress and the "file exists" dialog are boxed with their name on the border
-- message boxes are boxed and labelled `error`, `warning`, `info` or `question` instead of showing a stock icon
+- every dialog is boxed with its title on the border (`file properties`, `preferences`, `copy files`, `file exists`…)
+- group boxes inside dialogs ("ownership", "access control") get the same gapped-line box
+- form labels, buttons and tabs are lowercase; file names, paths and values keep their case
+- message boxes are labelled `error`, `warning`, `info` or `question`, with a small ASCII glyph in the severity's colour in place of the stock icon:
+  ```
+  ┌───┐
+  │ x │   Operation not supported
+  └───┘
+  ```
+  (`x` red, `!` yellow, `i` blue, `?` accent)
+- drop-downs, spin boxes and sub-menus get thin chevrons in the palette's colours
 - text-only hollow buttons; the default one is accent
 - flat 3px progress bars
 

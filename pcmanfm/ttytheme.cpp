@@ -21,6 +21,11 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QAbstractButton>
+#include <QGroupBox>
+#include <QGridLayout>
+#include <QTabBar>
+#include <QPixmap>
 #include <QDialog>
 #include <QMainWindow>
 #include <QMessageBox>
@@ -32,6 +37,7 @@
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStyleFactory>
+#include <QStyle>
 
 namespace PCManFM {
 
@@ -265,6 +271,21 @@ void TtyTheme::apply() {
         }
         return path;
     };
+    // chevrons for drop-downs, spin boxes and sub-menus
+    auto writeChevron = [&cacheDir](const QString& name, const QColor& color, const char* path) {
+        const QString file = cacheDir + QLatin1Char('/') + name;
+        QFile f(file);
+        if(f.open(QIODevice::WriteOnly)) {
+            f.write(QStringLiteral("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'>"
+                                   "<path d='%2' stroke='%1' stroke-width='1.3' fill='none'/></svg>")
+                        .arg(color.name(), QLatin1String(path)).toUtf8());
+        }
+        return file;
+    };
+    const QString arrowDown = writeChevron(QStringLiteral("down.svg"), c.fgDim, "M2 3.5 L5 6.5 L8 3.5");
+    const QString arrowDownHover = writeChevron(QStringLiteral("down-hover.svg"), c.accent, "M2 3.5 L5 6.5 L8 3.5");
+    const QString arrowUp = writeChevron(QStringLiteral("up.svg"), c.fgDim, "M2 6.5 L5 3.5 L8 6.5");
+    const QString arrowRight = writeChevron(QStringLiteral("right.svg"), c.fgDim, "M3.5 2 L6.5 5 L3.5 8");
     const QString closeIcon = writeIcon(QStringLiteral("close.svg"), c.fgDim);
     const QString closeIconHover = writeIcon(QStringLiteral("close-hover.svg"), c.red);
     auto rgba = [](const QColor& col) {
@@ -296,6 +317,10 @@ void TtyTheme::apply() {
         {"fontSize", fontSize},
         {"promptSize", QString::number(promptPx) + QStringLiteral("px")},
         {"font", QLatin1Char('"') + family + QLatin1Char('"')},
+        {"arrowDownHover", arrowDownHover},
+        {"arrowDown", arrowDown},
+        {"arrowUp", arrowUp},
+        {"arrowRight", arrowRight},
         {"closeIconHover", closeIconHover},
         {"closeIcon", closeIcon},
     };
@@ -306,6 +331,90 @@ void TtyTheme::apply() {
 
     // lowercases menus, boxes message boxes, makes windows see-through
     qApp->installEventFilter(new TtyTheme(qApp));
+}
+
+// Message boxes: a box labelled by severity, and in place of the stock icon a
+// small ASCII box glyph in the severity's colour:  ┌───┐
+//                                                  │ x │
+//                                                  └───┘
+void TtyTheme::decorateMessageBox(QMessageBox* box) {
+    const auto& c = Fm::Tty::colors();
+    QString label, glyph;
+    QColor color;
+    switch(box->icon()) {
+    case QMessageBox::Critical: label = QStringLiteral("error"); glyph = QStringLiteral("x"); color = c.red; break;
+    case QMessageBox::Warning: label = QStringLiteral("warning"); glyph = QStringLiteral("!"); color = c.yellow; break;
+    case QMessageBox::Question: label = QStringLiteral("question"); glyph = QStringLiteral("?"); color = c.accent; break;
+    case QMessageBox::Information: label = QStringLiteral("info"); glyph = QStringLiteral("i"); color = c.blue; break;
+    default: label = labelText(box->windowTitle()); break;
+    }
+    if(QLabel* icon = box->findChild<QLabel*>(QStringLiteral("qt_msgboxex_icon_label"))) {
+        if(glyph.isEmpty()) {
+            icon->hide();
+        }
+        else {
+            icon->setPixmap(QPixmap());
+            icon->setTextFormat(Qt::RichText);
+            icon->setText(QStringLiteral("<pre style=\"color:%1; font-family:'%2'; margin:0\">"
+                                         "┌───┐\n│ %3 │\n└───┘</pre>")
+                          .arg(color.name(), QApplication::font().family(), glyph));
+            icon->setMinimumSize(0, 0);
+            icon->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+            icon->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+            icon->setContentsMargins(0, 2, 0, 0);
+            icon->show();
+        }
+    }
+    // the message itself starts at the top, right next to the glyph
+    if(QLabel* text = box->findChild<QLabel*>(QStringLiteral("qt_msgbox_label"))) {
+        text->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        text->setIndent(0);
+        text->setMargin(0);
+    }
+    if(auto grid = qobject_cast<QGridLayout*>(box->layout())) {
+        for(int col = 0; col < grid->columnCount(); ++col) {
+            grid->setColumnMinimumWidth(col, 0);
+        }
+        grid->setHorizontalSpacing(4);
+    }
+    Fm::Tty::boxDialog(box, label);
+}
+
+// Dialogs: Qt group boxes ("Ownership", "Access Control"...) get the same
+// gapped-line box as the rest, and form labels, buttons and tabs are
+// lowercased (label_transform). File names, paths and messages keep their case:
+// only labels ending in ":" are touched.
+void TtyTheme::decorateDialog(QDialog* dialog) {
+    for(QGroupBox* group : dialog->findChildren<QGroupBox*>()) {
+        if(group->isCheckable() || group->title().isEmpty() || group->property("ttyBox").toBool()) {
+            continue;
+        }
+        const QString title = labelText(group->title().remove(QLatin1Char('&')));
+        group->setTitle(QString());
+        group->setProperty("ttyBox", true);
+        group->style()->unpolish(group);
+        group->style()->polish(group);
+        Fm::Tty::FloatingLabel::attach(group, title);
+    }
+    if(!g_lowercase) {
+        return;
+    }
+    for(QLabel* l : dialog->findChildren<QLabel*>()) {
+        const QString t = l->text();
+        if(l->textFormat() != Qt::RichText && !Qt::mightBeRichText(t) && t.trimmed().endsWith(QLatin1Char(':'))) {
+            l->setText(t.toLower());
+        }
+    }
+    for(QAbstractButton* b : dialog->findChildren<QAbstractButton*>()) {
+        if(!b->text().isEmpty() && !b->property("ttyKeepCase").toBool()) {
+            b->setText(b->text().toLower());
+        }
+    }
+    for(QTabBar* bar : dialog->findChildren<QTabBar*>()) {
+        for(int i = 0; i < bar->count(); ++i) {
+            bar->setTabText(i, bar->tabText(i).toLower());
+        }
+    }
 }
 
 // Lowercase menu items as they are shown (the tty "label_transform").
@@ -337,26 +446,23 @@ bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
             }
         }
     }
+    if(event->type() == QEvent::Polish) {
+        // every dialog sits in a box labelled with its title
+        if(QDialog* dialog = qobject_cast<QDialog*>(watched)) {
+            if(!qobject_cast<QMessageBox*>(dialog) && !dialog->windowTitle().isEmpty()) {
+                Fm::Tty::boxDialog(dialog, TtyTheme::labelText(dialog->windowTitle()));
+            }
+        }
+    }
     if(event->type() == QEvent::Show) {
-        // message boxes ("Operation not supported"...): a box labelled by
-        // severity instead of the stock icon, like the other dialogs
-        if(QMessageBox* box = qobject_cast<QMessageBox*>(watched)) {
-            if(!box->property("ttyBoxed").toBool()) {
-                box->setProperty("ttyBoxed", true);
-                QString label;
-                switch(box->icon()) {
-                case QMessageBox::Critical: label = QStringLiteral("error"); break;
-                case QMessageBox::Warning: label = QStringLiteral("warning"); break;
-                case QMessageBox::Question: label = QStringLiteral("question"); break;
-                case QMessageBox::Information: label = QStringLiteral("info"); break;
-                default: label = box->windowTitle(); break;
+        if(QDialog* dialog = qobject_cast<QDialog*>(watched)) {
+            if(!dialog->property("ttyDecorated").toBool()) {
+                dialog->setProperty("ttyDecorated", true);
+                if(QMessageBox* box = qobject_cast<QMessageBox*>(dialog)) {
+                    decorateMessageBox(box);
                 }
-                if(QLabel* icon = box->findChild<QLabel*>(QStringLiteral("qt_msgboxex_icon_label"))) {
-                    icon->hide();
-                    icon->setFixedSize(0, 0);
-                }
-                Fm::Tty::boxDialog(box, label);
-                QTimer::singleShot(0, box, [box] { box->adjustSize(); });
+                decorateDialog(dialog);
+                QTimer::singleShot(0, dialog, [dialog] { dialog->adjustSize(); });
             }
             return QObject::eventFilter(watched, event);
         }
