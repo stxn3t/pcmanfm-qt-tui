@@ -13,6 +13,7 @@
 #include <libfm-qt6/pathedit.h>
 
 #include <QAction>
+#include <QLinearGradient>
 #include <QListWidgetItem>
 #include <QSignalBlocker>
 #include <QPushButton>
@@ -109,6 +110,9 @@ list_icons=false
 # yellow=#f9e2af
 # blue=#89b4fa
 # green=#a6e3a1
+# an extra see-through layer in the file list, dialogs and menus, on top of
+# the window's bg (light-glass: rgba(0, 0, 0, 0.5)); unset = none
+# panel=rgba(0, 0, 0, 0)
 )";
 
 QString firstInstalledFont(const QString& list) {
@@ -183,6 +187,7 @@ void readColors(QSettings& s, Fm::Tty::Colors& c) {
     c.yellow = readColor(s, "yellow", c.yellow);
     c.blue = readColor(s, "blue", c.blue);
     c.green = readColor(s, "green", c.green);
+    c.panel = readColor(s, "panel", c.panel);
 }
 
 QList<TtyFlavor> builtinFlavors() {
@@ -199,18 +204,24 @@ QList<TtyFlavor> builtinFlavors() {
     blackGlass.opacity = 0.75;
     list << blackGlass;
 
-    // matched to Zenhanced in Zen: a lighter black tint (Zen's page lets
-    // about 1.4x as much wallpaper through as black glass), Zen's
-    // see-through lines and its green prompt
+    // 1:1 with Zenhanced (userChrome.css / userContent.css): the window is
+    // #main-window's slate tint at 20%; the file list, dialogs and menus get
+    // Zen's page layer on top (--zen-main-browser-background, black at 50%)
+    auto rgbaF = [](int r, int g, int b, qreal a) { QColor c(r, g, b); c.setAlphaF(a); return c; };
     TtyFlavor light = black;
     light.id = QStringLiteral("light-glass");
     light.name = QStringLiteral("light glass");
-    light.opacity = 0.65;
-    light.colors.bgAlt = QColor(255, 255, 255, 15);
-    light.colors.border = QColor(160, 160, 160, 140);       // rgba(160, 160, 160, 0.55)
-    light.colors.borderHover = QColor(220, 220, 220, 191);  // rgba(220, 220, 220, 0.75)
-    light.colors.accent = QColor(0x3d, 0xdc, 0x84);
-    light.colors.accentAlt = QColor(0x8f, 0xf0, 0xb8);
+    light.opacity = 0.2;
+    light.colors.bg = QColor(41, 47, 52);                      // rgba(41, 47, 52, 0.2)
+    light.colors.panel = rgbaF(0, 0, 0, 0.5);                  // rgba(0, 0, 0, 0.5)
+    light.colors.bgAlt = rgbaF(128, 128, 128, 0.12);           // selected tab fill
+    light.colors.fg = rgbaF(220, 220, 220, 0.85);              // --zen-text-color
+    light.colors.fgDim = rgbaF(160, 160, 160, 0.8);            // --zen-primary-color
+    light.colors.border = rgbaF(160, 160, 160, 0.55);          // --cli-border-color
+    light.colors.borderHover = rgbaF(220, 220, 220, 0.75);     // --cli-border-hover-color
+    light.colors.accent = QColor(0x3d, 0xdc, 0x84);            // --cli-prompt-color
+    light.colors.accentAlt = rgbaF(61, 220, 132, 0.65);        // --cli-prompt-color-dim
+    light.colors.blue = rgbaF(160, 180, 255, 0.8);             // links
     list << light;
     return list;
 }
@@ -639,6 +650,12 @@ bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
         p.setCompositionMode(QPainter::CompositionMode_Source);
         p.fillRect(static_cast<QPaintEvent*>(event)->rect(),
                    w->testAttribute(Qt::WA_TranslucentBackground) ? Fm::Tty::translucent(bg) : bg);
+        // dialogs and menus are content, like the file list: the panel layer on top
+        const QColor panel = Fm::Tty::colors().panel;
+        if(panel.alpha() > 0 && !qobject_cast<QMainWindow*>(w)) {
+            p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            p.fillRect(static_cast<QPaintEvent*>(event)->rect(), panel);
+        }
     }
     if(watched->isWidgetType() && (event->type() == QEvent::Polish || event->type() == QEvent::Show)) {
         QWidget* w = static_cast<QWidget*>(watched);
@@ -703,15 +720,33 @@ bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
 // menu > view > theme...
 
 namespace {
-// a strip of the flavor's colours for the list
-QIcon swatches(const Fm::Tty::Colors& c, const QColor& frame) {
-    const QList<QColor> colors = {c.bg, c.fg, c.accent, c.red, c.yellow, c.blue, c.green};
-    const int cell = 12, gap = 3;
-    QPixmap pm(colors.size() * (cell + gap), cell + 2);
+// The flavor as a strip: first a "window" tile (a wallpaper-like gradient
+// with the flavor's tint at its opacity, the panel layer in its right half,
+// framed in the flavor's line colour), then its text and accent colours.
+QIcon swatches(const Fm::Tty::Colors& c, qreal opacity, const QColor& frame) {
+    const int cell = 12, gap = 3, tile = 30;
+    const QList<QColor> colors = {c.fg, c.accent, c.red, c.yellow, c.blue, c.green};
+    QPixmap pm(tile + gap + colors.size() * (cell + gap), cell + 2);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
+    const QRect t(1, 1, tile - 1, cell - 1);
+    QLinearGradient wall(t.topLeft(), t.bottomRight());
+    wall.setColorAt(0.0, QColor(0x2a, 0x4a, 0x7a));
+    wall.setColorAt(0.6, QColor(0x1a, 0x2a, 0x44));
+    wall.setColorAt(1.0, QColor(0xb0, 0x6a, 0x30));
+    p.fillRect(t, wall);
+    QColor tint = c.bg;
+    if(tint.alpha() == 255) {
+        tint.setAlphaF(opacity);
+    }
+    p.fillRect(t, tint);
+    if(c.panel.alpha() > 0) {
+        p.fillRect(QRect(t.center().x(), t.top(), t.width() / 2 + 1, t.height()), c.panel);
+    }
+    p.setPen(c.border.alpha() > 0 ? c.border : frame);
+    p.drawRect(t);
     for(int i = 0; i < colors.size(); ++i) {
-        const QRect r(i * (cell + gap) + 1, 1, cell - 1, cell - 1);
+        const QRect r(tile + gap + i * (cell + gap) + 1, 1, cell - 1, cell - 1);
         p.fillRect(r, colors[i]);
         p.setPen(frame);
         p.drawRect(r);
@@ -734,10 +769,10 @@ TtyThemeDialog::TtyThemeDialog(QWidget* parent)
     auto layout = new QVBoxLayout(this);
 
     list_ = new QListWidget(this);
-    list_->setIconSize(QSize(7 * 15, 14));
+    list_->setIconSize(QSize(30 + 3 + 6 * 15, 14));
     list_->setSelectionMode(QAbstractItemView::SingleSelection);
     for(const auto& f : flavors_) {
-        auto item = new QListWidgetItem(swatches(f.colors, origColors_.borderHover), f.name, list_);
+        auto item = new QListWidgetItem(swatches(f.colors, f.opacity, origColors_.borderHover), f.name, list_);
         item->setData(Qt::UserRole, f.id);
         if(f.id == TtyTheme::currentFlavor()) {
             list_->setCurrentItem(item);
@@ -750,7 +785,7 @@ TtyThemeDialog::TtyThemeDialog(QWidget* parent)
     auto row = new QHBoxLayout;
     auto label = new QLabel(tr("opacity:"), this);
     opacity_ = new QSlider(Qt::Horizontal, this);
-    opacity_->setRange(20, 100);
+    opacity_->setRange(5, 100);
     opacity_->setValue(qRound(origOpacity_ * 100));
     opacityValue_ = new QLabel(this);
     opacityValue_->setMinimumWidth(fontMetrics().horizontalAdvance(QStringLiteral("1.00")));

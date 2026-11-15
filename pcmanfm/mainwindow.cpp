@@ -84,6 +84,7 @@ ViewFrame::ViewFrame(QWidget* parent):
 
     if(TtyTheme::enabled()) {
         stackedWidget_->setProperty("ttyBox", true);
+        stackedWidget_->setProperty("ttyPanel", true); // content: gets the panel layer
         ttyLabel_ = Fm::Tty::FloatingLabel::attach(stackedWidget_, QString());
         connect(stackedWidget_, &QStackedWidget::currentChanged, this, &ViewFrame::updateBoxLabel);
     }

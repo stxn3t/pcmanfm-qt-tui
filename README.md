@@ -128,13 +128,13 @@ Every setting lives in `~/.config/pcmanfm-tty/tty.conf`. Change a value, save, a
 | --- | --- | --- |
 | `black` | true black, solid (the default) | `1.0` |
 | `black-glass` | the same palette on a see-through black | `0.75` |
-| `light-glass` | matched to Zenhanced in Zen: a lighter see-through black, Zen's see-through lines (`rgba(160,160,160,0.55)`, hover `rgba(220,220,220,0.75)`) and its green `#3ddc84` | `0.65` |
+| `light-glass` | 1:1 with Zenhanced in Zen: the window is Zen's slate tint `rgba(41,47,52,0.2)`, and the file list, dialogs and menus get Zen's page layer on top (`rgba(0,0,0,0.5)`). Zen's text `rgba(220,220,220,0.85)`, lines `rgba(160,160,160,0.55)` / hover `rgba(220,220,220,0.75)`, row fill `rgba(128,128,128,0.12)`, links and its green `#3ddc84` | `0.2` |
 
-**menu → view → theme…** lists them with their colours. Picking one restyles the app straight away; **apply** keeps it, **cancel** puts back what you had. The opacity slider starts at the flavor's opacity and can be moved. Apply writes `flavor=` and `opacity=` to `tty.conf`; any `[colors]` lines you had are commented out (kept, with a note) so the flavor shows as picked.
+**menu → view → theme…** lists them. The first tile of each shows its tint over a little wallpaper (the right half with the panel layer, if it has one) framed in its line colour; then its text and accent colours. Picking one restyles the app straight away; **apply** keeps it, **cancel** puts back what you had. The opacity slider starts at the flavor's opacity and can be moved. Apply writes `flavor=` and `opacity=` to `tty.conf`; any `[colors]` lines you had are commented out (kept, with a note) so the flavor shows as picked.
 
 Switching between solid and see-through applies after a restart (`pcmanfm-tty --quit`, then start it again): a window's see-through surface is set when it's created. Colours, and the opacity of an already see-through window, change live. The dialog says when a restart is needed.
 
-The light-glass tint was matched from a screenshot: Zen's page lets about 1.4× as much wallpaper through as your darker see-through apps, so it uses a lighter black rather than a white tint. If it isn't 1:1 against your wallpaper, nudge the opacity slider.
+Zen draws two layers: a light tint on the whole window, and a darker one behind web pages. light-glass does the same with `bg` (the window, at the opacity) and `panel` (an extra layer in the file list, dialogs and menus). The values come straight from Zenhanced's `userChrome.css` and `userContent.css`. Zen's lines are 3px / 2px; set `border_width=2px` if you want that too.
 
 **Your own flavors.** Put a file in `~/.config/pcmanfm-tty/flavors/`, for example `mine.conf`, and it shows up in the list:
 
@@ -192,6 +192,8 @@ flavor=black
 
 Colours are `#rrggbb`, or `rgba(r, g, b, a)` with `a` from `0.0` to `1.0` for see-through lines and highlights.
 
+`panel` (not set by default) adds a see-through layer inside the file list, dialogs and menus, on top of the window's `bg`: `panel=rgba(0, 0, 0, 0.5)` is light-glass's.
+
 ### setting reference
 
 | setting | default | what it does |
@@ -214,6 +216,7 @@ Colours are `#rrggbb`, or `rgba(r, g, b, a)` with `a` from `0.0` to `1.0` for se
 | colour | used for |
 | --- | --- |
 | `bg` | Background of every window, at the flavor's opacity. |
+| `panel` | Extra layer in the file list, dialogs and menus (light-glass: black at 50%). |
 | `bg_alt` | The selected row and hovered rows and menu items. |
 | `fg` | Main text and file names without a colour. |
 | `fg_dim` | Secondary columns, labels at rest, headings, the status bar. |
@@ -348,7 +351,7 @@ I built both forks against Qt 6.12 on Linux and ran pcmanfm-tty on a virtual X d
 - Real Ark, gvfs (trash, drives, network) and an icon theme. The test system had none, so the icon view showed no icons.
 - The copy progress bar itself: local copies finished too fast for the dialog to stay up.
 - Drive rows with an eject button: the test system had no removable drives.
-- light-glass against your actual wallpaper: the tint was matched from a screenshot.
+- light-glass on a live compositor: checked by capturing the window with its transparency and layering it over a wallpaper.
 
 If something looks wrong, see [troubleshooting](#-troubleshooting).
 
