@@ -213,7 +213,7 @@ Colours are `#rrggbb`, or `rgba(r, g, b, a)` with `a` from `0.0` to `1.0` for se
 
 | colour | used for |
 | --- | --- |
-| `bg` | Background of everything, and of the labels, which is how they "cut" the line. |
+| `bg` | Background of every window, at the flavor's opacity. |
 | `bg_alt` | The selected row and hovered rows and menu items. |
 | `fg` | Main text and file names without a colour. |
 | `fg_dim` | Secondary columns, labels at rest, headings, the status bar. |
@@ -337,6 +337,8 @@ I built both forks against Qt 6.12 on Linux and ran pcmanfm-tty on a virtual X d
 - editing the path with Ctrl+L, Enter, and the history buttons
 - copy and paste, and the "file exists" dialog
 - `enabled=false` restoring the stock look
+- the theme picker: live preview of each flavor, cancel restoring the previous look, apply writing `tty.conf`, and starting see-through with light glass
+- `copy path` with two files selected (both paths on the clipboard), the rename box, Documents / Downloads in places, and the one-time defaults on an existing settings file
 - the PKGBUILD's build and package steps, and running the result from `/opt/pcmanfm-tty`
 
 **Not checked:**
@@ -345,6 +347,8 @@ I built both forks against Qt 6.12 on Linux and ran pcmanfm-tty on a virtual X d
 - `makepkg` on a real Arch / CachyOS system with the repos' Qt and LXQt packages.
 - Real Ark, gvfs (trash, drives, network) and an icon theme. The test system had none, so the icon view showed no icons.
 - The copy progress bar itself: local copies finished too fast for the dialog to stay up.
+- Drive rows with an eject button: the test system had no removable drives.
+- light-glass against your actual wallpaper: the tint was matched from a screenshot.
 
 If something looks wrong, see [troubleshooting](#-troubleshooting).
 
