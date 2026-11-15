@@ -1621,7 +1621,7 @@ void MainWindow::updateSelectedActions() {
             }
         }
         ui.actionFileProperties->setEnabled(files.size() > 0);
-        ui.actionCopyFullPath->setEnabled(files.size() == 1);
+        ui.actionCopyFullPath->setEnabled(!files.empty());
     }
     ui.actionCopy->setEnabled(hasAccessible);
     ui.actionCut->setEnabled(hasDeletable);
@@ -2446,9 +2446,13 @@ void MainWindow::on_actionCreateLauncher_triggered() {
 void MainWindow::on_actionCopyFullPath_triggered() {
     TabPage* page = currentPage();
     if(page) {
-        auto paths = page->selectedFilePaths();
-        if(paths.size() == 1) {
-            QApplication::clipboard()->setText(QString::fromUtf8(paths.front().toString().get()), QClipboard::Clipboard);
+        // one path per line when several files are selected
+        QStringList lines;
+        for(const auto& path : page->selectedFilePaths()) {
+            lines << QString::fromUtf8(path.toString().get());
+        }
+        if(!lines.isEmpty()) {
+            QApplication::clipboard()->setText(lines.join(QLatin1Char('\n')), QClipboard::Clipboard);
         }
     }
 }
@@ -2619,6 +2623,14 @@ void MainWindow::ttySetupSidePane() {
         (mode == Fm::SidePane::ModeDirTree ? tree : places)->setChecked(true);
     });
     ui.menu_View->insertActions(ui.actionSidePane, {places, tree});
+
+    // flavor and opacity picker
+    ui.menu_View->addSeparator();
+    QAction* theme = ui.menu_View->addAction(tr("Theme..."));
+    connect(theme, &QAction::triggered, this, [this] {
+        TtyThemeDialog dlg(this);
+        dlg.exec();
+    });
 }
 
 }

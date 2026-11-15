@@ -19,6 +19,7 @@
 
 
 #include "settings.h"
+#include <libfm-qt6/foldermodel.h>
 #include <QDir>
 #include <QFile>
 #include <QStringBuilder>
@@ -365,9 +366,24 @@ bool Settings::loadFile(QString filePath) {
     settings.endGroup();
 
     settings.beginGroup(QStringLiteral("Places"));
-    QStringList hiddenPlacesList = settings.value(QStringLiteral("HiddenPlaces")).toStringList();
+    // pcmanfm-tty: Applications is hidden unless you show it again
+    QStringList hiddenPlacesList = settings.value(QStringLiteral("HiddenPlaces"),
+                                                  QStringList{QStringLiteral("menu://applications/")}).toStringList();
     hiddenPlaces_ = QSet<QString>(hiddenPlacesList.begin(), hiddenPlacesList.end());
     settings.endGroup();
+
+    // pcmanfm-tty defaults, applied once (also to settings saved by an earlier
+    // build): Applications hidden, owner and group columns hidden. After
+    // that, whatever you show or hide again is kept.
+    if(settings.value(QStringLiteral("TtyDefaults"), 0).toInt() < 1) {
+        hiddenPlaces_.insert(QStringLiteral("menu://applications/"));
+        for(int col : {int(Fm::FolderModel::ColumnFileOwner), int(Fm::FolderModel::ColumnFileGroup)}) {
+            if(!hiddenColumns_.contains(QVariant(col))) {
+                hiddenColumns_ << QVariant(col);
+            }
+        }
+        settings.setValue(QStringLiteral("TtyDefaults"), 1);
+    }
 
     settings.beginGroup(QStringLiteral("Window"));
     fixedWindowWidth_ = settings.value(QStringLiteral("FixedWidth"), 640).toInt();

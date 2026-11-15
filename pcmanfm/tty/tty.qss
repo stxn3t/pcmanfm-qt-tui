@@ -176,6 +176,9 @@ QTabBar::close-button:hover {
 QAbstractItemView {
     background: transparent;
     alternate-background-color: transparent;
+    /* rows are highlighted by ::item:selected below; Qt's own selection fill
+       would show through see-through highlights */
+    selection-background-color: transparent;
     border: none;
     show-decoration-selected: 1;
     font-size: @fontSize@;
@@ -192,6 +195,14 @@ QAbstractItemView::item:selected {
 }
 QListView[viewMode="1"]::item:selected,
 QListView::item:selected:active {
+    background: @bgAltT@;
+}
+/* the tree's branch area (left of side pane rows) follows the row, not the
+   accent selection colour */
+QTreeView::branch {
+    background: transparent;
+}
+QTreeView::branch:selected {
     background: @bgAltT@;
 }
 /* plain lists in dialogs (preferences pages, app chooser): accent text when

@@ -120,7 +120,36 @@ To use another archiver, open **menu → edit → preferences → advanced → a
 
 ## ✨ customization
 
-Every setting lives in `~/.config/pcmanfm-tty/tty.conf`. Change a value, save, and restart pcmanfm-tty.
+Every setting lives in `~/.config/pcmanfm-tty/tty.conf`. Change a value, save, and restart pcmanfm-tty. The flavor and opacity can also be picked in the app: **menu → view → theme…** (see [flavors](#flavors)).
+
+### flavors
+
+| flavor | look | opacity |
+| --- | --- | --- |
+| `black` | true black, solid (the default) | `1.0` |
+| `black-glass` | the same palette on a see-through black | `0.75` |
+| `light-glass` | matched to Zenhanced in Zen: a lighter see-through black, Zen's see-through lines (`rgba(160,160,160,0.55)`, hover `rgba(220,220,220,0.75)`) and its green `#3ddc84` | `0.65` |
+
+**menu → view → theme…** lists them with their colours. Picking one restyles the app straight away; **apply** keeps it, **cancel** puts back what you had. The opacity slider starts at the flavor's opacity and can be moved. Apply writes `flavor=` and `opacity=` to `tty.conf`; any `[colors]` lines you had are commented out (kept, with a note) so the flavor shows as picked.
+
+Switching between solid and see-through applies after a restart (`pcmanfm-tty --quit`, then start it again): a window's see-through surface is set when it's created. Colours, and the opacity of an already see-through window, change live. The dialog says when a restart is needed.
+
+The light-glass tint was matched from a screenshot: Zen's page lets about 1.4× as much wallpaper through as your darker see-through apps, so it uses a lighter black rather than a white tint. If it isn't 1:1 against your wallpaper, nudge the opacity slider.
+
+**Your own flavors.** Put a file in `~/.config/pcmanfm-tty/flavors/`, for example `mine.conf`, and it shows up in the list:
+
+```ini
+[tty]
+name=mine
+opacity=0.8
+
+[colors]
+accent=#89b4fa
+accent_alt=#b4d0fb
+border=rgba(160, 160, 160, 0.55)
+```
+
+Colours you leave out come from `black`.
 
 ### the settings file
 
@@ -142,22 +171,26 @@ label_transform=lowercase
 
 list_icons=false
 
-opacity=1.0
+flavor=black
+# opacity=1.0   (leave out to use the flavor's)
 
 [colors]
-bg=#000000
-bg_alt=#111113
-fg=#d4d4d8
-fg_dim=#8a8a94
-border=#3f3f46
-border_hover=#a1a1aa
-accent=#a6e3a1
-accent_alt=#c6f6c1
-red=#f38ba8
-yellow=#f9e2af
-blue=#89b4fa
-green=#a6e3a1
+# uncomment a line to override that colour of the flavor
+# bg=#000000
+# bg_alt=#111113
+# fg=#d4d4d8
+# fg_dim=#8a8a94
+# border=#3f3f46
+# border_hover=#a1a1aa
+# accent=#a6e3a1
+# accent_alt=#c6f6c1
+# red=#f38ba8
+# yellow=#f9e2af
+# blue=#89b4fa
+# green=#a6e3a1
 ```
+
+Colours are `#rrggbb`, or `rgba(r, g, b, a)` with `a` from `0.0` to `1.0` for see-through lines and highlights.
 
 ### setting reference
 
@@ -173,7 +206,8 @@ green=#a6e3a1
 | `label_weight` | `500` | Weight of the box labels. |
 | `label_transform` | `lowercase` | `lowercase` · `none`. Applies to labels, tabs and menu items. Paths, bookmarks and recent files keep their case. |
 | `list_icons` | `false` | File icons in the list views and side pane. The icon and thumbnail views always show them. |
-| `opacity` | `1.0` | Background opacity, `0.0`–`1.0`. Below `1.0` your wallpaper shows through the background, tinted by `bg`; text, lines and icons stay solid. `0.6`–`0.8` matches most see-through setups. |
+| `flavor` | `black` | `black` · `black-glass` · `light-glass`, or one of your own (see [flavors](#flavors)). |
+| `opacity` | the flavor's | Background opacity, `0.0`–`1.0`. Below `1.0` your wallpaper shows through the background, tinted by `bg`; text, lines and icons stay solid. |
 
 ### palette
 
@@ -194,9 +228,7 @@ green=#a6e3a1
 
 ### see-through background
 
-Set `opacity` under `[tty]`, for example `opacity=0.7`, and restart pcmanfm-tty. The main window, dialogs and menus get a see-through background tinted with `bg`. With Hyprland's blur on (`decoration → blur`), the wallpaper behind is blurred, the same as your other see-through apps. Completion lists and drop-down lists stay solid so they're readable over anything.
-
-If you already have a `tty.conf` from an older build, it won't have the `opacity` line yet: add it under `[tty]`.
+Pick `black-glass` or `light-glass`, or set `opacity` under `[tty]`, for example `opacity=0.7`, and restart pcmanfm-tty. The main window, dialogs and menus get a see-through background tinted with `bg`. With Hyprland's blur on (`decoration → blur`), the wallpaper behind is blurred, the same as your other see-through apps. Completion lists and drop-down lists stay solid so they're readable over anything.
 
 **Changing the accent** is the most common tweak: set `accent`, then put a lighter shade in `accent_alt`. Palettes from heroic-tty's flavors (catppuccin, tokyo night, gruvbox, nord, rosé pine, everforest, dracula) drop straight in.
 
@@ -211,6 +243,11 @@ Put extra Qt stylesheet rules in `~/.config/pcmanfm-tty/user.qss`. It is loaded 
 Everything else (single click, thumbnails, terminal, hidden files, sorting) is in **menu → edit → preferences**, as in PCManFM-Qt. They are saved in `~/.config/pcmanfm-tty/default/settings.conf`, separate from a stock PCManFM-Qt's.
 
 The side pane mode switch moved from the top of the pane to **menu → view → side pane: places / directory tree**.
+
+**Defaults that differ from PCManFM-Qt** (applied once, also to settings from an earlier build; after that your changes stick):
+- the owner and group columns are hidden: right-click the column header to show them
+- Applications is hidden from `:: places`: right-click any place → show all entries, then right-click Applications and untick hide
+- Documents and Downloads are built-in places, right under Desktop (your XDG user folders)
 
 ---
 
@@ -228,15 +265,18 @@ The side pane mode switch moved from the top of the pane to **menu → view → 
 ### side pane
 - boxed and labelled `places` (or `tree`)
 - `:: places`, `:: devices`, `:: bookmarks` headings; no icons; `>` on the current place
+- home, Desktop, Documents, Downloads, Trash, Computer, Network; drive rows are the same height as the rest
 
 ### file list
 - boxed and labelled with the current folder's name
 - `ls`-style colours, `>` cursor on selected rows, dim secondary columns, lowercase headers over a dashed line
+- renaming (F2) edits the name in place, in a solid box with an accent outline
 - icon and thumbnail views keep icons and thumbnails, with coloured names
 
 ### menus
 - 1px border, dashed separators, lowercase items, accent on hover
 - `:: ark` heading over the archive actions
+- `copy path` (Ctrl+Shift+C) under `copy`: the full path of every selected file, one per line
 
 ### dialogs
 - every dialog is boxed with its title on the border (`file properties`, `preferences`, `copy files`, `file exists`…)

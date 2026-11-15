@@ -10,13 +10,17 @@
 #ifndef PCMANFM_TTYTHEME_H
 #define PCMANFM_TTYTHEME_H
 
+#include <QDialog>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QWidget>
+#include <libfm-qt6/tty.h>
 
-class QDialog;
 class QLabel;
+class QListWidget;
 class QMessageBox;
+class QSlider;
 class QStackedWidget;
 
 namespace Fm {
@@ -25,12 +29,41 @@ class PathEdit;
 
 namespace PCManFM {
 
+// A named palette with a suggested opacity. Built in: black, black glass,
+// light glass; more come from ~/.config/pcmanfm-tty/flavors/*.conf.
+struct TtyFlavor {
+    QString id;
+    QString name;
+    Fm::Tty::Colors colors;
+    qreal opacity = 1.0;
+};
+
 class TtyTheme : public QObject {
     Q_OBJECT
 public:
     // Reads ~/.config/pcmanfm-tty/tty.conf (writing the defaults on first run)
     // and, if tty mode is enabled, styles the whole application.
     static void apply();
+
+    // Re-applies stylesheet, palette and icons from the current Fm::Tty
+    // colours / opacity, live. Emits restyled().
+    static void restyle();
+
+    static QList<TtyFlavor> flavors();
+    static TtyFlavor flavor(const QString& id);
+    static QString currentFlavor();
+    // whether windows were created see-through (opacity < 1 at start-up)
+    static bool startedTranslucent();
+    // Writes flavor= and opacity= to tty.conf and comments out [colors]
+    // overrides so the flavor shows as picked.
+    static bool save(const QString& flavorId, qreal opacity);
+
+    static TtyTheme* instance();
+
+Q_SIGNALS:
+    void restyled();
+
+public:
 
     static bool enabled();
 
@@ -49,6 +82,26 @@ private:
     explicit TtyTheme(QObject* parent);
     static void decorateMessageBox(QMessageBox* box);
     static void decorateDialog(QDialog* dialog);
+};
+
+// menu → view → theme…: pick a flavor and an opacity with a live preview.
+class TtyThemeDialog : public QDialog {
+    Q_OBJECT
+public:
+    explicit TtyThemeDialog(QWidget* parent = nullptr);
+    void accept() override;
+    void reject() override;
+
+private:
+    void preview();
+    void updateNote();
+    QListWidget* list_;
+    QSlider* opacity_;
+    QLabel* opacityValue_;
+    QLabel* note_;
+    QList<TtyFlavor> flavors_;
+    Fm::Tty::Colors origColors_;
+    qreal origOpacity_;
 };
 
 // Keeps a box's top border line level with another widget's: used so the

@@ -13,6 +13,16 @@
 #include <libfm-qt6/pathedit.h>
 
 #include <QAction>
+#include <QListWidgetItem>
+#include <QSignalBlocker>
+#include <QPushButton>
+#include <algorithm>
+#include <QFileInfo>
+#include <QVBoxLayout>
+#include <QDialogButtonBox>
+#include <QSlider>
+#include <QListWidget>
+#include <QRegularExpression>
 #include <QApplication>
 #include <QDir>
 #include <QFile>
@@ -49,11 +59,22 @@ bool g_lowercase = true;
 // Written to ~/.config/pcmanfm-tty/tty.conf on first run. Same knobs and
 // colour names as heroic-tty / jellyfin-tty.
 const char* kDefaultConf = R"(# pcmanfm-tty settings
-# Change a value, save, and restart pcmanfm-tty.
+# Change a value, save, and restart pcmanfm-tty. The flavor and opacity can
+# also be picked in the app: menu > view > theme...
 
 [tty]
 # set to false to get the plain PCManFM-Qt look back
 enabled=true
+
+# palette: black, black-glass, light-glass, or the name of a file in
+# ~/.config/pcmanfm-tty/flavors/ (without .conf)
+flavor=black
+
+# background opacity, 0.0 - 1.0. Leave it out to use the flavor's (black: 1,
+# black-glass: 0.75, light-glass: 0.65). Below 1 the background is
+# see-through and your wallpaper shows behind it (blurred, if Hyprland's blur
+# is on); text, lines and icons stay solid.
+# opacity=1.0
 
 # the first installed font in the list wins
 font="JetBrains Mono, Iosevka, Fira Code, Cascadia Code, Source Code Pro, DejaVu Sans Mono, monospace"
@@ -73,25 +94,21 @@ label_transform=lowercase
 # file icons in list views and the side pane (the icon view always shows them)
 list_icons=false
 
-# background opacity, 0.0 - 1.0. Below 1 the background is see-through and
-# your wallpaper shows behind it (blurred, if Hyprland's blur is on);
-# text, lines and icons stay solid. Try 0.6 - 0.8.
-opacity=1.0
-
 [colors]
-# palette: true black (default flavor)
-bg=#000000
-bg_alt=#111113
-fg=#d4d4d8
-fg_dim=#8a8a94
-border=#3f3f46
-border_hover=#a1a1aa
-accent=#a6e3a1
-accent_alt=#c6f6c1
-red=#f38ba8
-yellow=#f9e2af
-blue=#89b4fa
-green=#a6e3a1
+# Uncomment a line to override that colour of the flavor. Colours are #rrggbb
+# or rgba(r, g, b, a) with a from 0.0 to 1.0. The black flavor's values:
+# bg=#000000
+# bg_alt=#111113
+# fg=#d4d4d8
+# fg_dim=#8a8a94
+# border=#3f3f46
+# border_hover=#a1a1aa
+# accent=#a6e3a1
+# accent_alt=#c6f6c1
+# red=#f38ba8
+# yellow=#f9e2af
+# blue=#89b4fa
+# green=#a6e3a1
 )";
 
 QString firstInstalledFont(const QString& list) {
@@ -110,9 +127,92 @@ QString firstInstalledFont(const QString& list) {
     return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
 }
 
+// "#rrggbb", or "rgba(r, g, b, a)" with a from 0.0 to 1.0 (as in CSS)
+QColor parseColor(const QString& text) {
+    const QString t = text.trimmed();
+    if(t.startsWith(QLatin1String("rgba("), Qt::CaseInsensitive) && t.endsWith(QLatin1Char(')'))) {
+        const QStringList parts = t.mid(5, t.length() - 6).split(QLatin1Char(','));
+        if(parts.size() == 4) {
+            QColor c(parts[0].trimmed().toInt(), parts[1].trimmed().toInt(), parts[2].trimmed().toInt());
+            c.setAlphaF(qBound(0.0, parts[3].trimmed().toDouble(), 1.0));
+            return c;
+        }
+        return QColor();
+    }
+    return QColor(t);
+}
+
 QColor readColor(QSettings& s, const char* key, const QColor& fallback) {
-    QColor c(s.value(QLatin1String(key)).toString());
+    // QSettings splits "rgba(1, 2, 3, 0.5)" at the commas: join it back
+    const QVariant v = s.value(QLatin1String(key));
+    const QString text = v.typeId() == QMetaType::QStringList ? v.toStringList().join(QLatin1Char(',')) : v.toString();
+    QColor c = parseColor(text);
     return c.isValid() ? c : fallback;
+}
+
+// Qt stylesheets take alpha as 0-255
+QString rgba(const QColor& col) {
+    return QStringLiteral("rgba(%1, %2, %3, %4)").arg(col.red()).arg(col.green()).arg(col.blue()).arg(col.alpha());
+}
+
+// what apply() read from tty.conf, kept for restyle()
+struct Style {
+    QString family;
+    QString fontSize = QStringLiteral("13px");
+    QString borderWidth = QStringLiteral("1px");
+    QString borderStyle = QStringLiteral("solid");
+    QString radius = QStringLiteral("3px");
+    QString labelSize = QStringLiteral("12px");
+    QString labelWeight = QStringLiteral("500");
+};
+Style g_style;
+QString g_flavor = QStringLiteral("black");
+bool g_startedTranslucent = false;
+TtyTheme* g_instance = nullptr;
+
+void readColors(QSettings& s, Fm::Tty::Colors& c) {
+    c.bg = readColor(s, "bg", c.bg);
+    c.bgAlt = readColor(s, "bg_alt", c.bgAlt);
+    c.fg = readColor(s, "fg", c.fg);
+    c.fgDim = readColor(s, "fg_dim", c.fgDim);
+    c.border = readColor(s, "border", c.border);
+    c.borderHover = readColor(s, "border_hover", c.borderHover);
+    c.accent = readColor(s, "accent", c.accent);
+    c.accentAlt = readColor(s, "accent_alt", c.accentAlt);
+    c.red = readColor(s, "red", c.red);
+    c.yellow = readColor(s, "yellow", c.yellow);
+    c.blue = readColor(s, "blue", c.blue);
+    c.green = readColor(s, "green", c.green);
+}
+
+QList<TtyFlavor> builtinFlavors() {
+    QList<TtyFlavor> list;
+    TtyFlavor black;
+    black.id = QStringLiteral("black");
+    black.name = QStringLiteral("black");
+    black.opacity = 1.0;
+    list << black;
+
+    TtyFlavor blackGlass = black;
+    blackGlass.id = QStringLiteral("black-glass");
+    blackGlass.name = QStringLiteral("black glass");
+    blackGlass.opacity = 0.75;
+    list << blackGlass;
+
+    // matched to Zenhanced in Zen: a lighter black tint (Zen's page lets
+    // about 1.4x as much wallpaper through as black glass), Zen's
+    // see-through lines and its green prompt
+    TtyFlavor light = black;
+    light.id = QStringLiteral("light-glass");
+    light.name = QStringLiteral("light glass");
+    light.opacity = 0.65;
+    light.colors.bgAlt = QColor(255, 255, 255, 15);
+    light.colors.border = QColor(160, 160, 160, 140);       // rgba(160, 160, 160, 0.55)
+    light.colors.borderHover = QColor(220, 220, 220, 191);  // rgba(220, 220, 220, 0.75)
+    light.colors.accent = QColor(0x3d, 0xdc, 0x84);
+    light.colors.accentAlt = QColor(0x8f, 0xf0, 0xb8);
+    list << light;
+    return list;
 }
 
 int pixels(const QString& value, int fallback) {
@@ -149,6 +249,50 @@ QString TtyTheme::promptPath(const QString& path) {
     return path;
 }
 
+TtyTheme* TtyTheme::instance() {
+    return g_instance;
+}
+
+QString TtyTheme::currentFlavor() {
+    return g_flavor;
+}
+
+bool TtyTheme::startedTranslucent() {
+    return g_startedTranslucent;
+}
+
+QList<TtyFlavor> TtyTheme::flavors() {
+    QList<TtyFlavor> list = builtinFlavors();
+    // your own: ~/.config/pcmanfm-tty/flavors/<id>.conf with a [colors] block
+    // (missing colours come from black) and optionally [tty] name= / opacity=
+    QDir dir(configDir() + QStringLiteral("/flavors"));
+    for(const QFileInfo& fi : dir.entryInfoList({QStringLiteral("*.conf")}, QDir::Files, QDir::Name)) {
+        QSettings f(fi.absoluteFilePath(), QSettings::IniFormat);
+        TtyFlavor fl;
+        fl.id = fi.completeBaseName();
+        f.beginGroup(QStringLiteral("tty"));
+        fl.name = f.value(QStringLiteral("name"), fl.id).toString();
+        fl.opacity = qBound(0.0, f.value(QStringLiteral("opacity"), 1.0).toDouble(), 1.0);
+        f.endGroup();
+        f.beginGroup(QStringLiteral("colors"));
+        readColors(f, fl.colors);
+        f.endGroup();
+        list.erase(std::remove_if(list.begin(), list.end(), [&](const TtyFlavor& x) { return x.id == fl.id; }), list.end());
+        list << fl;
+    }
+    return list;
+}
+
+TtyFlavor TtyTheme::flavor(const QString& id) {
+    const auto list = flavors();
+    for(const auto& f : list) {
+        if(f.id == id) {
+            return f;
+        }
+    }
+    return list.first();
+}
+
 void TtyTheme::apply() {
     const QString dir = configDir();
     const QString confPath = dir + QStringLiteral("/tty.conf");
@@ -168,45 +312,39 @@ void TtyTheme::apply() {
         return;
     }
     const QString fontList = s.value(QStringLiteral("font"), QStringLiteral("JetBrains Mono, monospace")).toString();
-    const QString fontSize = s.value(QStringLiteral("font_size"), QStringLiteral("13px")).toString();
-    const QString borderWidth = s.value(QStringLiteral("border_width"), QStringLiteral("1px")).toString();
-    const QString borderStyle = s.value(QStringLiteral("border_style"), QStringLiteral("solid")).toString();
-    const QString radius = s.value(QStringLiteral("radius"), QStringLiteral("3px")).toString();
-    const QString labelSize = s.value(QStringLiteral("label_size"), QStringLiteral("12px")).toString();
-    const QString labelWeight = s.value(QStringLiteral("label_weight"), QStringLiteral("500")).toString();
+    g_style.fontSize = s.value(QStringLiteral("font_size"), QStringLiteral("13px")).toString();
+    g_style.borderWidth = s.value(QStringLiteral("border_width"), QStringLiteral("1px")).toString();
+    g_style.borderStyle = s.value(QStringLiteral("border_style"), QStringLiteral("solid")).toString();
+    g_style.radius = s.value(QStringLiteral("radius"), QStringLiteral("3px")).toString();
+    g_style.labelSize = s.value(QStringLiteral("label_size"), QStringLiteral("12px")).toString();
+    g_style.labelWeight = s.value(QStringLiteral("label_weight"), QStringLiteral("500")).toString();
     g_lowercase = s.value(QStringLiteral("label_transform"), QStringLiteral("lowercase")).toString()
                   == QLatin1String("lowercase");
     const bool listIcons = s.value(QStringLiteral("list_icons"), false).toBool();
-    const qreal opacity = qBound(0.0, s.value(QStringLiteral("opacity"), 1.0).toDouble(), 1.0);
+    g_flavor = s.value(QStringLiteral("flavor"), QStringLiteral("black")).toString();
+    const TtyFlavor fl = flavor(g_flavor);
+    g_flavor = fl.id;
+    const qreal opacity = qBound(0.0, s.value(QStringLiteral("opacity"), fl.opacity).toDouble(), 1.0);
     s.endGroup();
 
-    Fm::Tty::Colors c;
+    // the flavor's colours, then whatever [colors] overrides
+    Fm::Tty::Colors c = fl.colors;
     s.beginGroup(QStringLiteral("colors"));
-    c.bg = readColor(s, "bg", c.bg);
-    c.bgAlt = readColor(s, "bg_alt", c.bgAlt);
-    c.fg = readColor(s, "fg", c.fg);
-    c.fgDim = readColor(s, "fg_dim", c.fgDim);
-    c.border = readColor(s, "border", c.border);
-    c.borderHover = readColor(s, "border_hover", c.borderHover);
-    c.accent = readColor(s, "accent", c.accent);
-    c.accentAlt = readColor(s, "accent_alt", c.accentAlt);
-    c.red = readColor(s, "red", c.red);
-    c.yellow = readColor(s, "yellow", c.yellow);
-    c.blue = readColor(s, "blue", c.blue);
-    c.green = readColor(s, "green", c.green);
+    readColors(s, c);
     s.endGroup();
 
     Fm::Tty::setEnabled(true);
     Fm::Tty::setColors(c);
     Fm::Tty::setListIcons(listIcons);
     Fm::Tty::setOpacity(opacity);
+    g_startedTranslucent = opacity < 1.0;
     Fm::Tty::Metrics m;
-    m.borderWidth = qMax(1, pixels(borderWidth, 1));
-    m.borderStyle = borderStyle == QLatin1String("dashed") ? Qt::DashLine
-                    : borderStyle == QLatin1String("dotted") ? Qt::DotLine : Qt::SolidLine;
-    m.radius = qMax(0, pixels(radius, 3));
-    m.labelPixelSize = pixels(labelSize, 12);
-    m.labelWeight = labelWeight.toInt() > 0 ? labelWeight.toInt() : 500;
+    m.borderWidth = qMax(1, pixels(g_style.borderWidth, 1));
+    m.borderStyle = g_style.borderStyle == QLatin1String("dashed") ? Qt::DashLine
+                    : g_style.borderStyle == QLatin1String("dotted") ? Qt::DotLine : Qt::SolidLine;
+    m.radius = qMax(0, pixels(g_style.radius, 3));
+    m.labelPixelSize = pixels(g_style.labelSize, 12);
+    m.labelWeight = g_style.labelWeight.toInt() > 0 ? g_style.labelWeight.toInt() : 500;
     Fm::Tty::setMetrics(m);
 
     // A stylesheet sits best on top of Fusion; a platform theme (Kvantum,
@@ -214,6 +352,21 @@ void TtyTheme::apply() {
     if(QStyle* fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
         QApplication::setStyle(fusion);
     }
+
+    g_style.family = firstInstalledFont(fontList);
+    QFont font(g_style.family);
+    font.setPixelSize(pixels(g_style.fontSize, 13));
+    QApplication::setFont(font);
+
+    // lowercases menus, boxes dialogs, paints window backgrounds
+    g_instance = new TtyTheme(qApp);
+    qApp->installEventFilter(g_instance);
+
+    restyle();
+}
+
+void TtyTheme::restyle() {
+    const auto& c = Fm::Tty::colors();
 
     QPalette pal;
     pal.setColor(QPalette::Window, c.bg);
@@ -241,96 +394,149 @@ void TtyTheme::apply() {
     pal.setColor(QPalette::Disabled, QPalette::ButtonText, c.border);
     QApplication::setPalette(pal);
 
-    const QString family = firstInstalledFont(fontList);
-    QFont font(family);
-    font.setPixelSize(pixels(fontSize, 13));
-    QApplication::setFont(font);
-
     QString qss;
     QFile res(QStringLiteral(":/tty/tty.qss"));
     if(res.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qss = QString::fromUtf8(res.readAll());
     }
-    QFile user(dir + QStringLiteral("/user.qss"));
+    QFile user(configDir() + QStringLiteral("/user.qss"));
     if(user.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qss += QLatin1Char('\n') + QString::fromUtf8(user.readAll());
     }
-    const int promptPx = pixels(fontSize, 13) + 2;
+    const int promptPx = pixels(g_style.fontSize, 13) + 2;
 
-    // the tab close button: a thin "x" in the palette's colours
+    // icons in the palette's colours; the file name carries the colour, so a
+    // new flavor gets new files (Qt caches images by path)
     const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
                              + QStringLiteral("/pcmanfm-tty");
     QDir().mkpath(cacheDir);
-    auto writeIcon = [&cacheDir](const QString& name, const QColor& color) {
-        const QString path = cacheDir + QLatin1Char('/') + name;
-        QFile f(path);
-        if(f.open(QIODevice::WriteOnly)) {
-            f.write(QStringLiteral("<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'>"
-                                   "<path d='M3 3 L9 9 M9 3 L3 9' stroke='%1' stroke-width='1.2' fill='none'/></svg>")
-                        .arg(color.name()).toUtf8());
+    auto writeSvg = [&cacheDir](const char* kind, const QColor& color, int size, const QString& body) {
+        const QString path = cacheDir + QStringLiteral("/%1-%2.svg").arg(QLatin1String(kind), color.name(QColor::HexArgb).mid(1));
+        if(!QFile::exists(path)) {
+            QFile f(path);
+            if(f.open(QIODevice::WriteOnly)) {
+                f.write(QStringLiteral("<svg xmlns='http://www.w3.org/2000/svg' width='%1' height='%1' viewBox='0 0 %1 %1'>"
+                                       "%2</svg>").arg(size).arg(body.arg(color.name())).toUtf8());
+            }
         }
         return path;
     };
-    // chevrons for drop-downs, spin boxes and sub-menus
-    auto writeChevron = [&cacheDir](const QString& name, const QColor& color, const char* path) {
-        const QString file = cacheDir + QLatin1Char('/') + name;
-        QFile f(file);
-        if(f.open(QIODevice::WriteOnly)) {
-            f.write(QStringLiteral("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'>"
-                                   "<path d='%2' stroke='%1' stroke-width='1.3' fill='none'/></svg>")
-                        .arg(color.name(), QLatin1String(path)).toUtf8());
-        }
-        return file;
-    };
-    const QString arrowDown = writeChevron(QStringLiteral("down.svg"), c.fgDim, "M2 3.5 L5 6.5 L8 3.5");
-    const QString arrowDownHover = writeChevron(QStringLiteral("down-hover.svg"), c.accent, "M2 3.5 L5 6.5 L8 3.5");
-    const QString arrowUp = writeChevron(QStringLiteral("up.svg"), c.fgDim, "M2 6.5 L5 3.5 L8 6.5");
-    const QString arrowRight = writeChevron(QStringLiteral("right.svg"), c.fgDim, "M3.5 2 L6.5 5 L3.5 8");
-    const QString closeIcon = writeIcon(QStringLiteral("close.svg"), c.fgDim);
-    const QString closeIconHover = writeIcon(QStringLiteral("close-hover.svg"), c.red);
-    auto rgba = [](const QColor& col) {
-        // Qt stylesheets take alpha as 0-255
-        return QStringLiteral("rgba(%1, %2, %3, %4)").arg(col.red()).arg(col.green()).arg(col.blue()).arg(col.alpha());
-    };
+    const QString cross = QStringLiteral("<path d='M3 3 L9 9 M9 3 L3 9' stroke='%1' stroke-width='1.2' fill='none'/>");
+    const QString down = QStringLiteral("<path d='M2 3.5 L5 6.5 L8 3.5' stroke='%1' stroke-width='1.3' fill='none'/>");
+    const QString up = QStringLiteral("<path d='M2 6.5 L5 3.5 L8 6.5' stroke='%1' stroke-width='1.3' fill='none'/>");
+    const QString right = QStringLiteral("<path d='M3.5 2 L6.5 5 L3.5 8' stroke='%1' stroke-width='1.3' fill='none'/>");
+
     const QList<QPair<const char*, QString>> vars = {
-        // see-through windows paint their tint themselves (see eventFilter):
-        // Qt skips stylesheet backgrounds on translucent windows
-        {"bgWindow", opacity < 1.0 ? QStringLiteral("transparent") : c.bg.name()},
+        // windows paint their own background (see eventFilter): Qt skips
+        // stylesheet backgrounds on see-through windows
+        {"bgWindow", QStringLiteral("transparent")},
         {"bgAltT", rgba(Fm::Tty::translucent(c.bgAlt))},
-        {"bgAlt", c.bgAlt.name()},
+        {"bgAlt", rgba(c.bgAlt)},
         {"bg", c.bg.name()},
-        {"fgDim", c.fgDim.name()},
-        {"fg", c.fg.name()},
-        {"borderHover", c.borderHover.name()},
-        {"borderWidth", borderWidth},
-        {"borderStyle", borderStyle},
-        {"border", c.border.name()},
-        {"accentAlt", c.accentAlt.name()},
-        {"accent", c.accent.name()},
-        {"red", c.red.name()},
-        {"yellow", c.yellow.name()},
-        {"blue", c.blue.name()},
-        {"green", c.green.name()},
-        {"radius", radius},
-        {"labelSize", labelSize},
-        {"labelWeight", labelWeight},
-        {"fontSize", fontSize},
+        {"fgDim", rgba(c.fgDim)},
+        {"fg", rgba(c.fg)},
+        {"borderHover", rgba(c.borderHover)},
+        {"borderWidth", g_style.borderWidth},
+        {"borderStyle", g_style.borderStyle},
+        {"border", rgba(c.border)},
+        {"accentAlt", rgba(c.accentAlt)},
+        {"accent", rgba(c.accent)},
+        {"red", rgba(c.red)},
+        {"yellow", rgba(c.yellow)},
+        {"blue", rgba(c.blue)},
+        {"green", rgba(c.green)},
+        {"radius", g_style.radius},
+        {"labelSize", g_style.labelSize},
+        {"labelWeight", g_style.labelWeight},
+        {"fontSize", g_style.fontSize},
         {"promptSize", QString::number(promptPx) + QStringLiteral("px")},
-        {"font", QLatin1Char('"') + family + QLatin1Char('"')},
-        {"arrowDownHover", arrowDownHover},
-        {"arrowDown", arrowDown},
-        {"arrowUp", arrowUp},
-        {"arrowRight", arrowRight},
-        {"closeIconHover", closeIconHover},
-        {"closeIcon", closeIcon},
+        {"font", QLatin1Char('"') + g_style.family + QLatin1Char('"')},
+        {"arrowDownHover", writeSvg("down", c.accent, 10, down)},
+        {"arrowDown", writeSvg("down", c.fgDim, 10, down)},
+        {"arrowUp", writeSvg("up", c.fgDim, 10, up)},
+        {"arrowRight", writeSvg("right", c.fgDim, 10, right)},
+        {"closeIconHover", writeSvg("close", c.red, 12, cross)},
+        {"closeIcon", writeSvg("close", c.fgDim, 12, cross)},
     };
     for(const auto& v : vars) {
         qss.replace(QLatin1Char('@') + QLatin1String(v.first) + QLatin1Char('@'), v.second);
     }
     qApp->setStyleSheet(qss);
 
-    // lowercases menus, boxes message boxes, makes windows see-through
-    qApp->installEventFilter(new TtyTheme(qApp));
+    for(QWidget* w : QApplication::allWidgets()) {
+        if(w->property("ttyWindow").toString() == QLatin1String("solid")) {
+            w->setStyleSheet(QStringLiteral("background: %1;").arg(c.bg.name()));
+        }
+        w->update();
+    }
+    if(g_instance) {
+        Q_EMIT g_instance->restyled();
+    }
+}
+
+bool TtyTheme::save(const QString& flavorId, qreal opacity) {
+    const QString confPath = configDir() + QStringLiteral("/tty.conf");
+    QFile f(confPath);
+    if(!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return false;
+    }
+    const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    f.close();
+
+    const QString flavorLine = QStringLiteral("flavor=") + flavorId;
+    const QString opacityLine = QStringLiteral("opacity=") + QString::number(opacity, 'f', 2);
+    static const QRegularExpression keyLine(QStringLiteral("^\\s*([A-Za-z_]+)\\s*="));
+    QStringList out;
+    QString section;
+    bool wroteFlavor = false, wroteOpacity = false, notedColors = false, sawTty = false;
+    auto finishTty = [&] {
+        if(!wroteFlavor) { out << flavorLine; wroteFlavor = true; }
+        if(!wroteOpacity) { out << opacityLine; wroteOpacity = true; }
+    };
+    for(const QString& line : lines) {
+        const QString trimmed = line.trimmed();
+        if(trimmed.startsWith(QLatin1Char('[')) && trimmed.endsWith(QLatin1Char(']'))) {
+            if(section == QLatin1String("tty")) {
+                // keep a blank line between the new keys and the next section
+                while(!out.isEmpty() && out.last().trimmed().isEmpty()) out.removeLast();
+                finishTty();
+                out << QString();
+            }
+            section = trimmed.mid(1, trimmed.length() - 2).toLower();
+            sawTty = sawTty || section == QLatin1String("tty");
+            out << line;
+            continue;
+        }
+        const auto m = keyLine.match(line);
+        if(section == QLatin1String("tty") && m.hasMatch()) {
+            if(m.captured(1) == QLatin1String("flavor")) { out << flavorLine; wroteFlavor = true; continue; }
+            if(m.captured(1) == QLatin1String("opacity")) { out << opacityLine; wroteOpacity = true; continue; }
+        }
+        if(section == QLatin1String("colors") && m.hasMatch()) {
+            // the picked flavor wins: keep your colours, commented out
+            if(!notedColors) {
+                out << QStringLiteral("# commented out by the theme picker (menu > view > theme...);");
+                out << QStringLiteral("# uncomment a line to override the flavor again");
+                notedColors = true;
+            }
+            out << QStringLiteral("# ") + line;
+            continue;
+        }
+        out << line;
+    }
+    if(section == QLatin1String("tty")) {
+        finishTty();
+    }
+    if(!sawTty) {
+        out << QStringLiteral("[tty]");
+        finishTty();
+    }
+    if(!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        return false;
+    }
+    f.write(out.join(QLatin1Char('\n')).toUtf8());
+    g_flavor = flavorId;
+    return true;
 }
 
 // Message boxes: a box labelled by severity, and in place of the stock icon a
@@ -420,27 +626,31 @@ void TtyTheme::decorateDialog(QDialog* dialog) {
 // Lowercase menu items as they are shown (the tty "label_transform").
 // Menus listing user data (bookmarks, recent files, history) keep their case.
 bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
-    // see-through windows: dialogs and menus get a translucent surface before
-    // they are created; other pop-ups (completion lists, combo box lists)
-    // stay solid so they are readable over anything
+    // Window backgrounds. The main window, dialogs and menus paint the bg
+    // tint themselves: solid, or at the opacity when they are see-through
+    // (they get a translucent surface before they are created while
+    // opacity < 1). Other pop-ups (completion lists, drop-down lists) stay
+    // solid so they are readable over anything.
     if(event->type() == QEvent::Paint && watched->isWidgetType()
-       && watched->property("ttyWindow").toString() == QLatin1String("glass")) {
-        // the see-through tint behind everything in the window
+       && watched->property("ttyWindow").toString() == QLatin1String("paint")) {
         QWidget* w = static_cast<QWidget*>(watched);
+        const QColor bg = Fm::Tty::colors().bg;
         QPainter p(w);
         p.setCompositionMode(QPainter::CompositionMode_Source);
-        p.fillRect(static_cast<QPaintEvent*>(event)->rect(), Fm::Tty::translucent(Fm::Tty::colors().bg));
+        p.fillRect(static_cast<QPaintEvent*>(event)->rect(),
+                   w->testAttribute(Qt::WA_TranslucentBackground) ? Fm::Tty::translucent(bg) : bg);
     }
-    if(Fm::Tty::opacity() < 1.0 && watched->isWidgetType()
-       && (event->type() == QEvent::Polish || event->type() == QEvent::Show)) {
+    if(watched->isWidgetType() && (event->type() == QEvent::Polish || event->type() == QEvent::Show)) {
         QWidget* w = static_cast<QWidget*>(watched);
         if(w->isWindow() && !w->property("ttyWindow").isValid()) {
-            const bool glass = qobject_cast<QDialog*>(w) || qobject_cast<QMenu*>(w) || qobject_cast<QMainWindow*>(w);
-            if(glass && (!w->testAttribute(Qt::WA_WState_Created) || w->testAttribute(Qt::WA_TranslucentBackground))) {
-                w->setProperty("ttyWindow", QStringLiteral("glass"));
-                w->setAttribute(Qt::WA_TranslucentBackground, true);
+            const bool painted = qobject_cast<QDialog*>(w) || qobject_cast<QMenu*>(w) || qobject_cast<QMainWindow*>(w);
+            if(painted) {
+                w->setProperty("ttyWindow", QStringLiteral("paint"));
+                if(Fm::Tty::opacity() < 1.0 && !w->testAttribute(Qt::WA_WState_Created)) {
+                    w->setAttribute(Qt::WA_TranslucentBackground, true);
+                }
             }
-            else if(!glass && event->type() == QEvent::Show && !w->inherits("QLabel")) {
+            else if(event->type() == QEvent::Show && !w->inherits("QLabel")) {
                 w->setProperty("ttyWindow", QStringLiteral("solid"));
                 w->setStyleSheet(QStringLiteral("background: %1;").arg(Fm::Tty::colors().bg.name()));
             }
@@ -485,6 +695,132 @@ bool TtyTheme::eventFilter(QObject* watched, QEvent* event) {
         }
     }
     return QObject::eventFilter(watched, event);
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// menu > view > theme...
+
+namespace {
+// a strip of the flavor's colours for the list
+QIcon swatches(const Fm::Tty::Colors& c, const QColor& frame) {
+    const QList<QColor> colors = {c.bg, c.fg, c.accent, c.red, c.yellow, c.blue, c.green};
+    const int cell = 12, gap = 3;
+    QPixmap pm(colors.size() * (cell + gap), cell + 2);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    for(int i = 0; i < colors.size(); ++i) {
+        const QRect r(i * (cell + gap) + 1, 1, cell - 1, cell - 1);
+        p.fillRect(r, colors[i]);
+        p.setPen(frame);
+        p.drawRect(r);
+    }
+    // same pixmap when selected: Qt would darken it otherwise
+    QIcon icon;
+    icon.addPixmap(pm, QIcon::Normal);
+    icon.addPixmap(pm, QIcon::Selected);
+    icon.addPixmap(pm, QIcon::Active);
+    return icon;
+}
+}
+
+TtyThemeDialog::TtyThemeDialog(QWidget* parent)
+    : QDialog(parent),
+      flavors_(TtyTheme::flavors()),
+      origColors_(Fm::Tty::colors()),
+      origOpacity_(Fm::Tty::opacity()) {
+    setWindowTitle(tr("Theme"));
+    auto layout = new QVBoxLayout(this);
+
+    list_ = new QListWidget(this);
+    list_->setIconSize(QSize(7 * 15, 14));
+    list_->setSelectionMode(QAbstractItemView::SingleSelection);
+    for(const auto& f : flavors_) {
+        auto item = new QListWidgetItem(swatches(f.colors, origColors_.borderHover), f.name, list_);
+        item->setData(Qt::UserRole, f.id);
+        if(f.id == TtyTheme::currentFlavor()) {
+            list_->setCurrentItem(item);
+        }
+    }
+    list_->setMinimumWidth(320);
+    list_->setMinimumHeight(qMin(8, int(flavors_.size()) + 1) * 24);
+    layout->addWidget(list_);
+
+    auto row = new QHBoxLayout;
+    auto label = new QLabel(tr("opacity:"), this);
+    opacity_ = new QSlider(Qt::Horizontal, this);
+    opacity_->setRange(20, 100);
+    opacity_->setValue(qRound(origOpacity_ * 100));
+    opacityValue_ = new QLabel(this);
+    opacityValue_->setMinimumWidth(fontMetrics().horizontalAdvance(QStringLiteral("1.00")));
+    row->addWidget(label);
+    row->addWidget(opacity_, 1);
+    row->addWidget(opacityValue_);
+    layout->addLayout(row);
+
+    note_ = new QLabel(this);
+    note_->setWordWrap(true);
+    note_->setProperty("ttyKeepCase", true);
+    layout->addWidget(note_);
+
+    auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Apply"));
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    // picking a flavor also picks its opacity; the slider can change it after
+    connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
+        if(row >= 0 && row < flavors_.size()) {
+            const QSignalBlocker block(opacity_);
+            opacity_->setValue(qRound(flavors_[row].opacity * 100));
+        }
+        preview();
+    });
+    connect(opacity_, &QSlider::valueChanged, this, &TtyThemeDialog::preview);
+    updateNote();
+}
+
+void TtyThemeDialog::preview() {
+    const int row = list_->currentRow();
+    if(row >= 0 && row < flavors_.size()) {
+        Fm::Tty::setColors(flavors_[row].colors);
+    }
+    Fm::Tty::setOpacity(opacity_->value() / 100.0);
+    TtyTheme::restyle();
+    updateNote();
+}
+
+void TtyThemeDialog::updateNote() {
+    const qreal op = opacity_->value() / 100.0;
+    opacityValue_->setText(QString::number(op, 'f', 2));
+    QString text;
+    if((op < 1.0) != TtyTheme::startedTranslucent()) {
+        text = op < 1.0
+            ? tr("See-through needs a restart: pcmanfm-tty --quit, then start it again. Until then windows stay solid.")
+            : tr("Solid needs a restart: pcmanfm-tty --quit, then start it again.");
+    }
+    else if(op < 1.0) {
+        text = tr("With Hyprland's blur on, the wallpaper behind is blurred.");
+    }
+    note_->setText(text);
+    note_->setVisible(!text.isEmpty());
+}
+
+void TtyThemeDialog::accept() {
+    const int row = list_->currentRow();
+    const QString id = (row >= 0 && row < flavors_.size()) ? flavors_[row].id : TtyTheme::currentFlavor();
+    TtyTheme::save(id, opacity_->value() / 100.0);
+    QDialog::accept();
+}
+
+void TtyThemeDialog::reject() {
+    // put back what was there before the dialog opened
+    Fm::Tty::setColors(origColors_);
+    Fm::Tty::setOpacity(origOpacity_);
+    TtyTheme::restyle();
+    QDialog::reject();
 }
 
 // ---------------------------------------------------------------------------
@@ -537,6 +873,9 @@ TtyPathPrompt::TtyPathPrompt(Fm::PathEdit* edit, QWidget* parent)
 
     edit_->installEventFilter(this);
     connect(edit_, &QLineEdit::textChanged, this, &TtyPathPrompt::updatePrompt);
+    if(TtyTheme::instance()) {
+        connect(TtyTheme::instance(), &TtyTheme::restyled, this, &TtyPathPrompt::updatePrompt);
+    }
     connect(edit_, &QLineEdit::returnPressed, this, &TtyPathPrompt::stopEditing);
     updatePrompt();
 }
