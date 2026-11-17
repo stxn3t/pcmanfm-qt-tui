@@ -128,13 +128,13 @@ Every setting lives in `~/.config/pcmanfm-tty/tty.conf`. Change a value, save, a
 | --- | --- | --- |
 | `black` | true black, solid (the default) | `1.0` |
 | `black-glass` | the same palette on a see-through black | `0.75` |
-| `light-glass` | 1:1 with Zenhanced in Zen: the window is Zen's slate tint `rgba(41,47,52,0.2)`, and the file list, dialogs and menus get Zen's page layer on top (`rgba(0,0,0,0.5)`). Zen's text `rgba(220,220,220,0.85)`, lines `rgba(160,160,160,0.55)` / hover `rgba(220,220,220,0.75)`, row fill `rgba(128,128,128,0.12)`, links and its green `#3ddc84` | `0.2` |
+| `light-glass` | Zenhanced's colours: Zen's slate window tint `rgba(41,47,52,0.2)`, even across the whole window. Zen's text `rgba(220,220,220,0.85)`, lines `rgba(160,160,160,0.55)` / hover `rgba(220,220,220,0.75)`, row fill `rgba(128,128,128,0.12)`, links and its green `#3ddc84` | `0.2` |
 
-**menu → view → theme…** lists them. The first tile of each shows its tint over a little wallpaper (the right half with the panel layer, if it has one) framed in its line colour; then its text and accent colours. Picking one restyles the app straight away; **apply** keeps it, **cancel** puts back what you had. The opacity slider starts at the flavor's opacity and can be moved. Apply writes `flavor=` and `opacity=` to `tty.conf`; any `[colors]` lines you had are commented out (kept, with a note) so the flavor shows as picked.
+**menu → view → theme…** lists them. The first tile of each shows its tint over a little wallpaper, framed in its line colour; then its text and accent colours. Picking one restyles the app straight away; **apply** keeps it, **cancel** puts back what you had. The opacity slider starts at the flavor's opacity and can be moved. Apply writes `flavor=` and `opacity=` to `tty.conf`; any `[colors]` lines you had are commented out (kept, with a note) so the flavor shows as picked.
 
 Switching between solid and see-through applies after a restart (`pcmanfm-tty --quit`, then start it again): a window's see-through surface is set when it's created. Colours, and the opacity of an already see-through window, change live. The dialog says when a restart is needed.
 
-Zen draws two layers: a light tint on the whole window, and a darker one behind web pages. light-glass does the same with `bg` (the window, at the opacity) and `panel` (an extra layer in the file list, dialogs and menus). The values come straight from Zenhanced's `userChrome.css` and `userContent.css`. Zen's lines are 3px / 2px; set `border_width=2px` if you want that too.
+light-glass's values come straight from Zenhanced's `userChrome.css` and `userContent.css`. Zen also puts a darker layer behind web pages; light-glass leaves that out so the tint is even, but `panel=rgba(0, 0, 0, 0.5)` under `[colors]` brings it back for the file list, dialogs and menus. Zen's lines are 3px / 2px; set `border_width=2px` if you want that too.
 
 **Your own flavors.** Put a file in `~/.config/pcmanfm-tty/flavors/`, for example `mine.conf`, and it shows up in the list:
 
@@ -192,7 +192,7 @@ flavor=black
 
 Colours are `#rrggbb`, or `rgba(r, g, b, a)` with `a` from `0.0` to `1.0` for see-through lines and highlights.
 
-`panel` (not set by default) adds a see-through layer inside the file list, dialogs and menus, on top of the window's `bg`: `panel=rgba(0, 0, 0, 0.5)` is light-glass's.
+`panel` (not set by default) adds a see-through layer inside the file list, dialogs and menus, on top of the window's `bg`, for example `panel=rgba(0, 0, 0, 0.5)`.
 
 ### setting reference
 
@@ -216,7 +216,7 @@ Colours are `#rrggbb`, or `rgba(r, g, b, a)` with `a` from `0.0` to `1.0` for se
 | colour | used for |
 | --- | --- |
 | `bg` | Background of every window, at the flavor's opacity. |
-| `panel` | Extra layer in the file list, dialogs and menus (light-glass: black at 50%). |
+| `panel` | Optional extra layer in the file list, dialogs and menus (none by default). |
 | `bg_alt` | The selected row and hovered rows and menu items. |
 | `fg` | Main text and file names without a colour. |
 | `fg_dim` | Secondary columns, labels at rest, headings, the status bar. |

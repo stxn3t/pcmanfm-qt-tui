@@ -111,7 +111,7 @@ list_icons=false
 # blue=#89b4fa
 # green=#a6e3a1
 # an extra see-through layer in the file list, dialogs and menus, on top of
-# the window's bg (light-glass: rgba(0, 0, 0, 0.5)); unset = none
+# the window's bg, like Zen's darker pages (e.g. rgba(0, 0, 0, 0.5)); unset = none
 # panel=rgba(0, 0, 0, 0)
 )";
 
@@ -204,16 +204,15 @@ QList<TtyFlavor> builtinFlavors() {
     blackGlass.opacity = 0.75;
     list << blackGlass;
 
-    // 1:1 with Zenhanced (userChrome.css / userContent.css): the window is
-    // #main-window's slate tint at 20%; the file list, dialogs and menus get
-    // Zen's page layer on top (--zen-main-browser-background, black at 50%)
+    // Zenhanced's colours (userChrome.css / userContent.css): the window is
+    // #main-window's slate tint at 20%, the same everywhere (no darker
+    // layer behind the file list, unlike Zen's pages)
     auto rgbaF = [](int r, int g, int b, qreal a) { QColor c(r, g, b); c.setAlphaF(a); return c; };
     TtyFlavor light = black;
     light.id = QStringLiteral("light-glass");
     light.name = QStringLiteral("light glass");
     light.opacity = 0.2;
     light.colors.bg = QColor(41, 47, 52);                      // rgba(41, 47, 52, 0.2)
-    light.colors.panel = rgbaF(0, 0, 0, 0.5);                  // rgba(0, 0, 0, 0.5)
     light.colors.bgAlt = rgbaF(128, 128, 128, 0.12);           // selected tab fill
     light.colors.fg = rgbaF(220, 220, 220, 0.85);              // --zen-text-color
     light.colors.fgDim = rgbaF(160, 160, 160, 0.8);            // --zen-primary-color
