@@ -260,6 +260,7 @@ The side pane mode switch moved from the top of the pane to **menu → view → 
 - text-only buttons: `<` back, `>` forward, `^` up, `r` reload, `+` new tab; `icons` `thumbs` `compact` `list` view modes; `menu` (shown while the menu bar is hidden, which is the default)
 - right-click `<` or `>` for the history, as before
 - the path is a prompt, `~/downloads $ ▌`. Click it or press **Ctrl+L** to edit it; **Enter** goes there
+- long paths are cut from the left to fit, keeping the folders you're in (`…/FactoryGame/Saved/Logs $ ▌`); the full path is in the tooltip and the edit field
 
 ### tabs
 - tmux-style `1:downloads`, `2:hypr`, renumbered when you move or close tabs

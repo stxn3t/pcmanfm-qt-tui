@@ -900,7 +900,11 @@ TtyPathPrompt::TtyPathPrompt(Fm::PathEdit* edit, QWidget* parent)
     label_->setObjectName(QStringLiteral("ttyPrompt"));
     label_->setTextFormat(Qt::RichText);
     label_->setCursor(Qt::IBeamCursor);
-    label_->setToolTip(tr("Click or press Ctrl+L to edit the path"));
+    // Ignored: the label's natural width (the whole path) must not size the
+    // stack or the tool bar; long paths are cut from the left instead
+    label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    label_->setMinimumWidth(0);
+    label_->installEventFilter(this);
     stack_->addWidget(label_);
     stack_->addWidget(edit_);
     layout->addWidget(stack_);
@@ -915,11 +919,47 @@ TtyPathPrompt::TtyPathPrompt(Fm::PathEdit* edit, QWidget* parent)
     updatePrompt();
 }
 
+QSize TtyPathPrompt::sizeHint() const {
+    return QSize(fontMetrics().averageCharWidth() * 40, QWidget::sizeHint().height());
+}
+
+QSize TtyPathPrompt::minimumSizeHint() const {
+    return QSize(fontMetrics().averageCharWidth() * 12, QWidget::minimumSizeHint().height());
+}
+
 void TtyPathPrompt::updatePrompt() {
     const auto& c = Fm::Tty::colors();
-    QString shown = TtyTheme::promptPath(edit_->text()).toHtmlEscaped();
+    const QString full = TtyTheme::promptPath(edit_->text());
+    label_->setToolTip(full + QStringLiteral("\n") + tr("Click or press Ctrl+L to edit the path"));
+
+    // room for the path: the label's width less its padding and " $ ▌"
+    const QFontMetrics fm(label_->font());
+    const int room = label_->contentsRect().width() - 12 - fm.horizontalAdvance(QStringLiteral(" $  "));
+    QString path = full;
+    bool cut = false;
+    if(room > 0 && fm.horizontalAdvance(path) > room) {
+        // keep as many trailing folders as fit: "…/Saved/Logs"
+        const QString ellipsis = QStringLiteral("…");
+        const QStringList parts = full.split(QLatin1Char('/'));
+        QString tail;
+        for(int i = parts.size() - 1; i >= 0; --i) {
+            const QString next = parts[i] + (tail.isEmpty() ? QString() : QStringLiteral("/") + tail);
+            if(fm.horizontalAdvance(ellipsis + QStringLiteral("/") + next) > room) {
+                break;
+            }
+            tail = next;
+        }
+        path = tail.isEmpty() ? fm.elidedText(full, Qt::ElideLeft, room) : ellipsis + QStringLiteral("/") + tail;
+        cut = true;
+    }
+
+    const QString shown = path.toHtmlEscaped();
     QString html;
-    if(shown.startsWith(QLatin1Char('~'))) {
+    if(cut) {
+        html = QStringLiteral("<span style=\"color:%1\">%2</span>%3")
+                   .arg(c.fgDim.name(), shown.left(1), shown.mid(1));
+    }
+    else if(shown.startsWith(QLatin1Char('~'))) {
         html = QStringLiteral("<span style=\"color:%1\">~/</span>%2")
                    .arg(c.accent.name(), shown.mid(shown.length() > 1 ? 2 : 1));
     }
@@ -950,6 +990,9 @@ void TtyPathPrompt::mousePressEvent(QMouseEvent* event) {
 }
 
 bool TtyPathPrompt::eventFilter(QObject* watched, QEvent* event) {
+    if(watched == label_ && event->type() == QEvent::Resize) {
+        updatePrompt(); // re-cut the path for the new width
+    }
     if(watched == edit_ && event->type() == QEvent::FocusOut) {
         auto fe = static_cast<QFocusEvent*>(event);
         // the completer popup steals focus while typing: stay in edit mode

@@ -129,6 +129,11 @@ public:
     void stopEditing();
     Fm::PathEdit* edit() const { return edit_; }
 
+    // the prompt takes whatever room the tool bar gives it and cuts long
+    // paths from the left; it never asks for the whole path's width
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
